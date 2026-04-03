@@ -11,67 +11,54 @@ public class AnomalyAlert {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String type;
-    private String severity;
+    @Column(name = "source_ip", nullable = false)
     private String sourceIp;
 
-    @Column(length = 1000)
-    private String description;
+    @Column(name = "anomaly_type", nullable = false)
+    private String anomalyType;
 
-    private LocalDateTime detectedAt;
+    @Column(nullable = false)
+    private String severity;
+
+    @Column(name = "timestamp", nullable = false)
+    private LocalDateTime timestamp;
 
     public AnomalyAlert() {
-    }
-
-    public AnomalyAlert(String type, String severity, String sourceIp, String description, LocalDateTime detectedAt) {
-        this.type = type;
-        this.severity = severity;
-        this.sourceIp = sourceIp;
-        this.description = description;
-        this.detectedAt = detectedAt;
     }
 
     public Long getId() {
         return id;
     }
 
-    public String getType() {
-        return type;
-    }
-
-    public String getSeverity() {
-        return severity;
-    }
-
     public String getSourceIp() {
         return sourceIp;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public LocalDateTime getDetectedAt() {
-        return detectedAt;
-    }
-
-    public void setType(String type) {
-        this.type = type;
-    }
-
-    public void setSeverity(String severity) {
-        this.severity = severity;
     }
 
     public void setSourceIp(String sourceIp) {
         this.sourceIp = sourceIp;
     }
 
-    public void setDescription(String description) {
-        this.description = description;
+    public String getAnomalyType() {
+        return anomalyType;
     }
 
-    public void setDetectedAt(LocalDateTime detectedAt) {
-        this.detectedAt = detectedAt;
+    public void setAnomalyType(String anomalyType) {
+        this.anomalyType = anomalyType;
+    }
+
+    public String getSeverity() {
+        return severity;
+    }
+
+    public void setSeverity(String severity) {
+        this.severity = severity;
+    }
+
+    public LocalDateTime getTimestamp() {
+        return timestamp;
+    }
+
+    public void setTimestamp(LocalDateTime timestamp) {
+        this.timestamp = timestamp;
     }
 }

@@ -11,24 +11,25 @@ public class TrafficRecord {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "timestamp", nullable = false)
     private LocalDateTime timestamp;
+
+    @Column(name = "source_ip", nullable = false)
     private String sourceIp;
+
+    @Column(name = "destination_ip")
     private String destinationIp;
-    private String protocol;
+
+    @Column(name = "destination_port", nullable = false)
     private Integer destinationPort;
+
+    @Column(nullable = false)
+    private String protocol;
+
+    @Column(name = "bytes_transferred", nullable = false)
     private Long bytesTransferred;
 
     public TrafficRecord() {
-    }
-
-    public TrafficRecord(LocalDateTime timestamp, String sourceIp, String destinationIp,
-                         String protocol, Integer destinationPort, Long bytesTransferred) {
-        this.timestamp = timestamp;
-        this.sourceIp = sourceIp;
-        this.destinationIp = destinationIp;
-        this.protocol = protocol;
-        this.destinationPort = destinationPort;
-        this.bytesTransferred = bytesTransferred;
     }
 
     public Long getId() {
@@ -59,20 +60,20 @@ public class TrafficRecord {
         this.destinationIp = destinationIp;
     }
 
-    public String getProtocol() {
-        return protocol;
-    }
-
-    public void setProtocol(String protocol) {
-        this.protocol = protocol;
-    }
-
     public Integer getDestinationPort() {
         return destinationPort;
     }
 
     public void setDestinationPort(Integer destinationPort) {
         this.destinationPort = destinationPort;
+    }
+
+    public String getProtocol() {
+        return protocol;
+    }
+
+    public void setProtocol(String protocol) {
+        this.protocol = protocol;
     }
 
     public Long getBytesTransferred() {
