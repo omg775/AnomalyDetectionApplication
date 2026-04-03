@@ -1,6 +1,7 @@
 package com.om.AnomalyDetectionApplication.service;
 
 import com.om.AnomalyDetectionApplication.dto.AnomalySummaryResponse;
+import com.om.AnomalyDetectionApplication.dto.TopSourceDTO;
 import com.om.AnomalyDetectionApplication.entity.AnomalyAlert;
 import com.om.AnomalyDetectionApplication.repository.AnomalyAlertRepository;
 import org.springframework.data.domain.Page;
@@ -69,5 +70,17 @@ public class AnomalyAlertService {
         } else {
             return anomalyAlertRepository.findAll(pageable);
         }
+    }
+
+    public List<TopSourceDTO> getTopSources() {
+        List<Object[]> results = anomalyAlertRepository.findTopSuspiciousIps();
+
+        return results.stream()
+                .map(r -> new TopSourceDTO(
+                        (String) r[0],
+                        ((Number) r[1]).longValue(),
+                        (String) r[2]
+                ))
+                .toList();
     }
 }

@@ -21,4 +21,13 @@ public interface AnomalyAlertRepository extends JpaRepository<AnomalyAlert, Long
     Page<AnomalyAlert> findByAnomalyType(String anomalyType, Pageable pageable);
 
     Page<AnomalyAlert> findBySeverityAndAnomalyType(String severity, String anomalyType, Pageable pageable);
+
+    // 🔥 NEW: Top Suspicious IPs
+    @Query("""
+        SELECT a.sourceIp, COUNT(a), MAX(a.severity)
+        FROM AnomalyAlert a
+        GROUP BY a.sourceIp
+        ORDER BY COUNT(a) DESC
+    """)
+    List<Object[]> findTopSuspiciousIps();
 }
