@@ -6,6 +6,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface AnomalyAlertRepository extends JpaRepository<AnomalyAlert, Long> {
@@ -22,7 +23,6 @@ public interface AnomalyAlertRepository extends JpaRepository<AnomalyAlert, Long
 
     Page<AnomalyAlert> findBySeverityAndAnomalyType(String severity, String anomalyType, Pageable pageable);
 
-    // 🔥 NEW: Top Suspicious IPs
     @Query("""
         SELECT a.sourceIp, COUNT(a), MAX(a.severity)
         FROM AnomalyAlert a
@@ -30,4 +30,34 @@ public interface AnomalyAlertRepository extends JpaRepository<AnomalyAlert, Long
         ORDER BY COUNT(a) DESC
     """)
     List<Object[]> findTopSuspiciousIps();
+
+    List<AnomalyAlert> findAllByOrderByTimestampAsc();
+
+    // NEW: time-filtered alert queries
+    Page<AnomalyAlert> findByTimestampBetween(LocalDateTime start, LocalDateTime end, Pageable pageable);
+
+    Page<AnomalyAlert> findBySeverityAndTimestampBetween(String severity, LocalDateTime start, LocalDateTime end, Pageable pageable);
+
+    Page<AnomalyAlert> findByAnomalyTypeAndTimestampBetween(String anomalyType, LocalDateTime start, LocalDateTime end, Pageable pageable);
+
+    Page<AnomalyAlert> findBySeverityAndAnomalyTypeAndTimestampBetween(
+            String severity,
+            String anomalyType,
+            LocalDateTime start,
+            LocalDateTime end,
+            Pageable pageable
+    );
+
+    // NEW: time-filtered top sources
+    @Query("""
+        SELECT a.sourceIp, COUNT(a), MAX(a.severity)
+        FROM AnomalyAlert a
+        WHERE a.timestamp BETWEEN :start AND :end
+        GROUP BY a.sourceIp
+        ORDER BY COUNT(a) DESC
+    """)
+    List<Object[]> findTopSuspiciousIpsBetween(LocalDateTime start, LocalDateTime end);
+
+    // NEW: time-filtered trend base data
+    List<AnomalyAlert> findByTimestampBetweenOrderByTimestampAsc(LocalDateTime start, LocalDateTime end);
 }
