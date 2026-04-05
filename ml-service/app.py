@@ -24,12 +24,18 @@ def fetch_data():
 
 
 def train_model(df):
+    df = df.copy()
+
+    df["isNight"] = df["hourOfDay"].apply(lambda x: 1 if x < 6 else 0)
+    df["isWeekend"] = df["dayOfWeek"].apply(lambda x: 1 if x >= 6 else 0)
+
     features = [
         "hourOfDay",
         "dayOfWeek",
         "severity",
         "anomalyType",
-        "sourceIpHash"
+        "isNight",
+        "isWeekend"
     ]
 
     X = df[features]
@@ -42,7 +48,7 @@ def train_model(df):
 
     model.fit(X)
 
-    df["prediction"] = model.predict(X)   # -1 = anomaly, 1 = normal
+    df["prediction"] = model.predict(X)
     df["score"] = model.decision_function(X)
 
     return df
