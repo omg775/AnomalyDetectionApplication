@@ -1,3 +1,8 @@
+import warnings
+from urllib3.exceptions import NotOpenSSLWarning
+
+warnings.filterwarnings("ignore", category=NotOpenSSLWarning)
+
 import requests
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -31,13 +36,13 @@ def train_model(df):
 
     model = IsolationForest(
         n_estimators=100,
-        contamination=0.05,
+        contamination=0.01,
         random_state=42
     )
 
     model.fit(X)
 
-    df["prediction"] = model.predict(X)
+    df["prediction"] = model.predict(X)   # -1 = anomaly, 1 = normal
     df["score"] = model.decision_function(X)
 
     return df
@@ -72,6 +77,10 @@ def main():
 
     df.to_csv("results.csv", index=False)
     print("\nSaved to results.csv")
+
+    anomalies_only = df[df["prediction"] == -1]
+    anomalies_only.to_csv("anomalies_only.csv", index=False)
+    print("Saved to anomalies_only.csv")
 
     visualize(df)
 
