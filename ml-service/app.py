@@ -3,27 +3,44 @@ from urllib3.exceptions import NotOpenSSLWarning
 
 warnings.filterwarnings("ignore", category=NotOpenSSLWarning)
 
-import requests
+from fastapi import FastAPI
+from pydantic import BaseModel
+from typing import List
 import pandas as pd
-import matplotlib.pyplot as plt
 from sklearn.ensemble import IsolationForest
 
-API_URL = "http://127.0.0.1:8080/api/anomalies/ml-data"
+app = FastAPI()
 
 
-def fetch_data():
-    print("Fetching data from API...")
-    response = requests.get(API_URL, timeout=10)
-    print("Response received:", response.status_code)
-    response.raise_for_status()
-
-    data = response.json()
-    print("Rows fetched:", len(data))
-
-    return pd.DataFrame(data)
+class MLDataDTO(BaseModel):
+    hourOfDay: int
+    dayOfWeek: int
+    severity: int
+    anomalyType: int
+    sourceIpHash: int
 
 
-def train_model(df):
+class MlPredictionRequest(BaseModel):
+    records: List[MLDataDTO]
+
+
+class MlPredictionResult(BaseModel):
+    hourOfDay: int
+    dayOfWeek: int
+    severity: int
+    anomalyType: int
+    sourceIpHash: int
+    isNight: int
+    isWeekend: int
+    prediction: int
+    score: float
+
+
+class MlPredictionResponse(BaseModel):
+    results: List[MlPredictionResult]
+
+
+def train_model(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
     df["isNight"] = df["hourOfDay"].apply(lambda x: 1 if x < 6 else 0)
@@ -34,6 +51,7 @@ def train_model(df):
         "dayOfWeek",
         "severity",
         "anomalyType",
+        "sourceIpHash",
         "isNight",
         "isWeekend"
     ]
@@ -54,42 +72,32 @@ def train_model(df):
     return df
 
 
-def visualize(df):
-    normal = df[df["prediction"] == 1]
-    anomaly = df[df["prediction"] == -1]
-
-    plt.figure(figsize=(10, 6))
-    plt.scatter(normal["hourOfDay"], normal["severity"], label="Normal", alpha=0.6)
-    plt.scatter(anomaly["hourOfDay"], anomaly["severity"], label="Anomaly", alpha=0.9)
-    plt.xlabel("Hour of Day")
-    plt.ylabel("Severity")
-    plt.title("Isolation Forest Anomaly Detection")
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
+@app.get("/")
+def home():
+    return {"message": "FastAPI ML service is running"}
 
 
-def main():
-    print("Starting ML script...")
+@app.post("/predict", response_model=MlPredictionResponse)
+def predict(request: MlPredictionRequest):
+    df = pd.DataFrame([record.model_dump() for record in request.records])
 
-    df = fetch_data()
-    print("Data fetched successfully")
+    if df.empty:
+        return {"results": []}
 
     df = train_model(df)
-    print("Model trained successfully")
 
-    print("\nTop anomalies:")
-    print(df.sort_values("score").head(10))
+    results = []
+    for _, row in df.iterrows():
+        results.append({
+            "hourOfDay": int(row["hourOfDay"]),
+            "dayOfWeek": int(row["dayOfWeek"]),
+            "severity": int(row["severity"]),
+            "anomalyType": int(row["anomalyType"]),
+            "sourceIpHash": int(row["sourceIpHash"]),
+            "isNight": int(row["isNight"]),
+            "isWeekend": int(row["isWeekend"]),
+            "prediction": int(row["prediction"]),
+            "score": float(row["score"])
+        })
 
-    df.to_csv("results.csv", index=False)
-    print("\nSaved to results.csv")
-
-    anomalies_only = df[df["prediction"] == -1]
-    anomalies_only.to_csv("anomalies_only.csv", index=False)
-    print("Saved to anomalies_only.csv")
-
-    visualize(df)
-
-
-if __name__ == "__main__":
-    main()
+    return {"results": results}
