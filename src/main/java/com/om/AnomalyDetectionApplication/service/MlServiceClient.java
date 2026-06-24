@@ -5,12 +5,13 @@ import com.om.AnomalyDetectionApplication.dto.MlPredictionResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import java.util.Map;
 
 @Service
 public class MlServiceClient {
 
     private final RestTemplate restTemplate;
-    private final String fastApiUrl = "http://127.0.0.1:8010/predict";
+    private final String baseUrl = "http://127.0.0.1:8010";
 
     @Autowired
     public MlServiceClient(RestTemplate restTemplate) {
@@ -19,9 +20,17 @@ public class MlServiceClient {
 
     public MlPredictionResponse getPredictions(MlPredictionRequest request) {
         return restTemplate.postForObject(
-                fastApiUrl,
+                baseUrl + "/predict",
                 request,
                 MlPredictionResponse.class
+        );
+    }
+    
+    public Map trainModel(MlPredictionRequest request) {
+        return restTemplate.postForObject(
+                baseUrl + "/train",
+                request,
+                Map.class
         );
     }
 }

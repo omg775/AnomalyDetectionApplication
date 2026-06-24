@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class PredictionService {
@@ -24,5 +25,11 @@ public class PredictionService {
         List<MLDataDTO> records = detectionService.getMLData();
         MlPredictionRequest request = new MlPredictionRequest(records);
         return mlServiceClient.getPredictions(request);
+    }
+    
+    public Map trainModel() {
+        List<MLDataDTO> records = detectionService.getMLData();
+        MlPredictionRequest request = new MlPredictionRequest(records);
+        return mlServiceClient.trainModel(request);
     }
 }

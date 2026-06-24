@@ -5,6 +5,7 @@ import com.om.AnomalyDetectionApplication.dto.MlPredictionResultDTO;
 import com.om.AnomalyDetectionApplication.service.PredictionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -24,6 +25,12 @@ public class PredictionController {
     public MlPredictionResponse predict() {
         return predictionService.predict();
     }
+    
+    @PostMapping("/api/anomalies/train")
+    public Map train() {
+        return predictionService.trainModel();
+    }
+    
     @GetMapping("/anomalies-only")
     public List<MlPredictionResultDTO> getAnomaliesOnly() {
         return predictionService.predict()
@@ -32,6 +39,7 @@ public class PredictionController {
                 .filter(p -> p.getPrediction() == -1)
                 .toList();
     }
+    
     @GetMapping("/stats")
     public Map<String, Object> getStats() {
         List<MlPredictionResultDTO> data = predictionService.predict().getResults();
