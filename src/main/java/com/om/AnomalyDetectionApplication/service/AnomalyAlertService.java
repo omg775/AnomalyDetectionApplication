@@ -6,6 +6,7 @@ import com.om.AnomalyDetectionApplication.dto.TopSourceDTO;
 import com.om.AnomalyDetectionApplication.dto.TrendPointDTO;
 import com.om.AnomalyDetectionApplication.entity.AnomalyAlert;
 import com.om.AnomalyDetectionApplication.repository.AnomalyAlertRepository;
+import com.om.AnomalyDetectionApplication.util.MLFeatureMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -57,12 +58,6 @@ public class AnomalyAlertService {
         return new AnomalySummaryResponse(total, high, medium, low, byType);
     }
 
-    // old version kept so existing controllers don't break
-    public Page<AnomalyAlert> getAlerts(int page, int size, String severity, String anomalyType) {
-        return getAlerts(page, size, severity, anomalyType, null, null);
-    }
-
-    // new version with time filtering
     public Page<AnomalyAlert> getAlerts(
             int page,
             int size,
@@ -189,30 +184,10 @@ public class AnomalyAlertService {
                 .map(a -> new MLDataDTO(
                         a.getTimestamp().getHour(),
                         a.getTimestamp().getDayOfWeek().getValue(),
-                        mapSeverity(a.getSeverity()),
-                        mapAnomalyType(a.getAnomalyType()),
-                        mapSourceIp(a.getSourceIp())
+                        MLFeatureMapper.mapSeverity(a.getSeverity()),
+                        MLFeatureMapper.mapAnomalyType(a.getAnomalyType()),
+                        MLFeatureMapper.hashIpAddress(a.getSourceIp())
                 ))
                 .toList();
-    }
-
-    private int mapSeverity(String severity) {
-        if ("HIGH".equalsIgnoreCase(severity)) return 3;
-        if ("MEDIUM".equalsIgnoreCase(severity)) return 2;
-        return 1;
-    }
-
-    private int mapAnomalyType(String anomalyType) {
-        if ("HIGH_TRAFFIC_VOLUME".equalsIgnoreCase(anomalyType)) return 1;
-        if ("SUSPICIOUS_PROTOCOL".equalsIgnoreCase(anomalyType)) return 2;
-        if ("UNUSUAL_PORT_ACCESS".equalsIgnoreCase(anomalyType)) return 3;
-        return 0;
-    }
-
-    private int mapSourceIp(String sourceIp) {
-        if (sourceIp == null) {
-            return 0;
-        }
-        return Math.abs(sourceIp.hashCode());
     }
 }

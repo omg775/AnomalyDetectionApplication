@@ -1,0 +1,50 @@
+# =============================================================================
+# Example configuration for AnomalyDetectionApplication.
+#
+# Copy this file's guidance into real environment variables — do NOT copy it
+# to `application.properties` and fill in real values there, since
+# application.properties is committed to git and only ever contains
+# ${VAR_NAME} placeholders.
+#
+# Setup:
+#   1. Export each variable below in your shell profile, an untracked local
+#      `.env` file loaded by your run configuration, or your IDE's run
+#      configuration environment variables panel.
+#   2. Never commit real values. .gitignore already blocks common patterns
+#      (.env, application-local*.properties, *.secrets, etc).
+# =============================================================================
+
+# --- Database (Postgres / Supabase) ---
+# Full JDBC URL, e.g.:
+# jdbc:postgresql://<host>:<port>/<database>?sslmode=require&prepareThreshold=0&preparedStatementCacheQueries=0&preferQueryMode=simple
+DB_URL=jdbc:postgresql://localhost:5432/postgres
+
+# Database username
+DB_USERNAME=postgres
+
+# Database password
+DB_PASSWORD=change-me
+
+# --- JWT ---
+# A long, random, high-entropy secret used to sign JWTs (HS256 needs >= 256
+# bits / 32 bytes). Generate one with:
+#   openssl rand -hex 32
+JWT_SECRET=change-me-to-a-random-64-char-hex-string
+
+# --- Admin credentials ---
+# Used by /api/auth/login to issue JWTs.
+ADMIN_USERNAME=admin
+
+# ADMIN_PASSWORD must be a BCrypt HASH, not a plaintext password — it is
+# compared with PasswordEncoder#matches() against the plaintext password
+# submitted at login. Generate one with:
+#   mvn compile
+#   java -cp target/classes:$(mvn -q dependency:build-classpath -Dmdep.outputFile=/dev/stdout) \
+#     com.om.AnomalyDetectionApplication.util.PasswordHashGenerator "your-strong-password"
+ADMIN_PASSWORD=$2a$10$change.me.to.a.real.bcrypt.hash.generated.above
+
+# --- CORS (optional) ---
+# Comma-separated list of allowed origins, e.g. http://localhost:5173
+# Defaults to "*" (any origin) if unset — tighten this before deploying
+# publicly.
+CORS_ALLOWED_ORIGINS=*

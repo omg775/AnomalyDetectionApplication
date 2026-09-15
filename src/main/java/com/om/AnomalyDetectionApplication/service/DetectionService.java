@@ -5,6 +5,9 @@ import com.om.AnomalyDetectionApplication.entity.AnomalyAlert;
 import com.om.AnomalyDetectionApplication.entity.TrafficRecord;
 import com.om.AnomalyDetectionApplication.repository.AnomalyAlertRepository;
 import com.om.AnomalyDetectionApplication.repository.TrafficRecordRepository;
+import com.om.AnomalyDetectionApplication.util.MLFeatureMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -17,6 +20,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class DetectionService {
+
+    private static final Logger log = LoggerFactory.getLogger(DetectionService.class);
 
     private final AnomalyAlertRepository anomalyAlertRepository;
     private final TrafficRecordRepository trafficRecordRepository;
@@ -37,12 +42,16 @@ public class DetectionService {
     }
 
     public void detectAnomalies() {
+        log.info("Starting heuristic anomaly detection run");
+
         LocalDateTime maxTimestamp = anomalyAlertRepository.findMaxTimestamp();
-        
+
         int pageSize = 1000;
         int pageNumber = 0;
+        int recordsScanned = 0;
+        int alertsCreated = 0;
         Page<TrafficRecord> page;
-        
+
         do {
             Pageable pageable = PageRequest.of(pageNumber, pageSize);
             
@@ -53,6 +62,7 @@ public class DetectionService {
             }
 
             for (TrafficRecord record : page.getContent()) {
+                recordsScanned++;
                 String anomalyType = null;
                 String severity = null;
 
@@ -73,10 +83,13 @@ public class DetectionService {
                     alert.setTimestamp(record.getTimestamp());
 
                     anomalyAlertRepository.save(alert);
+                    alertsCreated++;
                 }
             }
             pageNumber++;
         } while (page.hasNext());
+
+        log.info("Detection run finished: {} records scanned, {} alerts created", recordsScanned, alertsCreated);
     }
 
     public List<MLDataDTO> getMLData() {
@@ -87,10 +100,10 @@ public class DetectionService {
                     int hourOfDay = alert.getTimestamp().getHour();
                     int dayOfWeek = alert.getTimestamp().getDayOfWeek().getValue();
 
-                    int severity = mapSeverity(alert.getSeverity());
-                    int anomalyType = mapAnomalyType(alert.getAnomalyType());
+                    int severity = MLFeatureMapper.mapSeverity(alert.getSeverity());
+                    int anomalyType = MLFeatureMapper.mapAnomalyType(alert.getAnomalyType());
 
-                    int sourceIpHash = hashIpAddress(alert.getSourceIp());
+                    int sourceIpHash = MLFeatureMapper.hashIpAddress(alert.getSourceIp());
 
                     return new MLDataDTO(
                             hourOfDay,
@@ -101,42 +114,5 @@ public class DetectionService {
                     );
                 })
                 .collect(Collectors.toList());
-    }
-    
-    private int hashIpAddress(String ipAddress) {
-        if (ipAddress == null || !ipAddress.contains(".")) {
-            return 0;
-        }
-        try {
-            String[] parts = ipAddress.split("\\.");
-            long result = 0;
-            for (int i = 0; i < parts.length; i++) {
-                result += Long.parseLong(parts[i]) * Math.pow(256, 3 - i);
-            }
-            return (int) (result % Integer.MAX_VALUE);
-        } catch (Exception e) {
-            return Math.abs(ipAddress.hashCode());
-        }
-    }
-
-    private int mapSeverity(String severity) {
-        if (severity == null) return 1;
-
-        return switch (severity.toUpperCase()) {
-            case "LOW" -> 1;
-            case "MEDIUM" -> 2;
-            case "HIGH" -> 3;
-            default -> 1;
-        };
-    }
-
-    private int mapAnomalyType(String anomalyType) {
-        if (anomalyType == null) return 0;
-
-        return switch (anomalyType.toUpperCase()) {
-            case "HIGH_TRAFFIC_VOLUME" -> 1;
-            case "SUSPICIOUS_PORT_ACCESS" -> 2;
-            default -> 0;
-        };
     }
 }

@@ -1,19 +1,61 @@
+import json
+import os
 import warnings
+from datetime import datetime, timezone
+from typing import List, Optional
+
 from urllib3.exceptions import NotOpenSSLWarning
 
 warnings.filterwarnings("ignore", category=NotOpenSSLWarning)
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List
 import pandas as pd
-from sklearn.ensemble import IsolationForest
 import joblib
-import os
+from sklearn.ensemble import IsolationForest
+from sklearn.neighbors import LocalOutlierFactor
+from sklearn.svm import OneClassSVM
 
 app = FastAPI()
 
-MODEL_FILE = "model.joblib"
+DEFAULT_ALGORITHM = "isolation_forest"
+DEFAULT_CONTAMINATION = 0.01
+SUPPORTED_ALGORITHMS = ("isolation_forest", "local_outlier_factor", "one_class_svm")
+
+
+def model_path(algorithm: str) -> str:
+    return f"model_{algorithm}.joblib"
+
+
+def metadata_path(algorithm: str) -> str:
+    return f"model_{algorithm}.meta.json"
+
+
+def build_model(algorithm: str, contamination: float):
+    if algorithm == "isolation_forest":
+        return IsolationForest(n_estimators=100, contamination=contamination, random_state=42)
+    if algorithm == "local_outlier_factor":
+        return LocalOutlierFactor(n_neighbors=20, contamination=contamination, novelty=True)
+    if algorithm == "one_class_svm":
+        return OneClassSVM(nu=contamination, kernel="rbf", gamma="scale")
+    raise ValueError(f"Unsupported algorithm: {algorithm}")
+
+
+def validate_algorithm(algorithm: str) -> str:
+    algorithm = (algorithm or DEFAULT_ALGORITHM).lower()
+    if algorithm not in SUPPORTED_ALGORITHMS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported algorithm '{algorithm}'. Supported: {', '.join(SUPPORTED_ALGORITHMS)}",
+        )
+    return algorithm
+
+
+def validate_contamination(contamination: Optional[float]) -> float:
+    value = contamination if contamination is not None else DEFAULT_CONTAMINATION
+    if not (0.0 < value <= 0.5):
+        raise HTTPException(status_code=400, detail="contamination must be in (0, 0.5]")
+    return value
 
 
 class MLDataDTO(BaseModel):
@@ -26,6 +68,8 @@ class MLDataDTO(BaseModel):
 
 class MlPredictionRequest(BaseModel):
     records: List[MLDataDTO]
+    algorithm: Optional[str] = None
+    contamination: Optional[float] = None
 
 
 class MlPredictionResult(BaseModel):
@@ -69,27 +113,49 @@ def home():
     return {"message": "FastAPI ML service is running"}
 
 
+@app.get("/health")
+def health():
+    return {"status": "UP"}
+
+
+@app.get("/models")
+def list_models():
+    models = []
+    for algorithm in SUPPORTED_ALGORITHMS:
+        path = metadata_path(algorithm)
+        if os.path.exists(path):
+            with open(path) as f:
+                models.append(json.load(f))
+    return {"models": models}
+
+
 @app.post("/train")
 def train(request: MlPredictionRequest):
     df = pd.DataFrame([record.model_dump() for record in request.records])
-    
+
     if df.empty:
         return {"message": "No data provided for training"}
+
+    algorithm = validate_algorithm(request.algorithm)
+    contamination = validate_contamination(request.contamination)
 
     df = preprocess_data(df)
     X = get_features(df)
 
-    model = IsolationForest(
-        n_estimators=100,
-        contamination=0.01,
-        random_state=42
-    )
-
+    model = build_model(algorithm, contamination)
     model.fit(X)
-    
-    # Save the trained model
-    joblib.dump(model, MODEL_FILE)
-    
+
+    joblib.dump(model, model_path(algorithm))
+
+    metadata = {
+        "algorithm": algorithm,
+        "contamination": contamination,
+        "recordsProcessed": len(df),
+        "trainedAt": datetime.now(timezone.utc).isoformat(),
+    }
+    with open(metadata_path(algorithm), "w") as f:
+        json.dump(metadata, f)
+
     return {"message": "Model trained and saved successfully", "records_processed": len(df)}
 
 
@@ -100,14 +166,19 @@ def predict(request: MlPredictionRequest):
     if df.empty:
         return {"results": []}
 
+    algorithm = validate_algorithm(request.algorithm)
+
     df = preprocess_data(df)
     X = get_features(df)
-    
-    # Load the trained model
-    if not os.path.exists(MODEL_FILE):
-        raise HTTPException(status_code=400, detail="Model not trained yet. Call /train first.")
-        
-    model = joblib.load(MODEL_FILE)
+
+    path = model_path(algorithm)
+    if not os.path.exists(path):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Model for algorithm '{algorithm}' not trained yet. Call /train first.",
+        )
+
+    model = joblib.load(path)
 
     df["prediction"] = model.predict(X)
     df["score"] = model.decision_function(X)
