@@ -12,8 +12,10 @@ local `master` was fast-forwarded to it before the branch was created.
 |---|---|
 | Baseline (before any change) | `Tests run: 53, Failures: 0, Errors: 0, Skipped: 0` |
 | After Phase 1 | `Tests run: 173, Failures: 0, Errors: 0, Skipped: 0` |
+| After Phase 2 | `Tests run: 191, Failures: 0, Errors: 0, Skipped: 0` |
 
-ML service (pytest, Python 3.12): 16 tests after Phase 1 (there were none before).
+ML service (pytest, Python 3.12, pinned requirements): none before, 16 after Phase 1, 47 after
+Phase 2 (`47 passed`, warnings treated as errors).
 
 The PostgreSQL migration tests (`FreshDatabaseMigrationTest`, `ExistingDatabaseMigrationTest`) need
 Docker. Without Docker they are skipped, not failed, and the summary shows them as skipped.
@@ -55,6 +57,22 @@ Docker. Without Docker they are skipped, not failed, and the summary shows them 
   should fix it. The ML tests were run in a `python:3.12-slim` container instead. The existing
   `ml-service/venv` has no pip and was left untouched.
 
+## Phase 2: ML integration quality
+
+| # | Task | Status | Notes |
+|---|---|---|---|
+| 9 | Alert id in ML DTOs, paging | Done | Commit `c881f5b`. Keyset paging (`ml.feature.batch-size`, default 5000). Predict sends one ML request per batch; training still sends everything in one request because the model must see the whole dataset. Three duplicate copies of the feature code were merged into `MlFeatureService`. |
+| 10 | Persist model output | Done | Commit `74fddc3`. Migration is **V4**, not V3 (V3 holds the CSV row hash). `ml_scored_at` is stored in UTC. |
+| 11 | ML service performance and robustness | Done | Commit `979c942`. Model and metadata live in one bundle file so they can never disagree. A stored model with another feature schema gets 409. |
+| 12 | ML service hygiene | Done | Commit `e8edfab`. Test client uses `httpx2` (Starlette deprecates `httpx`). |
+
+An end-to-end run (backend jar on PostgreSQL, ML service in a container with the pinned
+requirements) covered upload, detect, train, predict, score, the alerts list, agreement and `/stats`.
+
+**Retrain once after deploying.** Models trained before task 11 used a different file format and
+location, so the ML service does not pick them up and answers "not trained yet" until
+`POST /api/anomalies/train` is called.
+
 ## Behaviour changes that affect the thesis
 
 | Change | Before | After | Thesis section |
@@ -78,6 +96,16 @@ Docker. Without Docker they are skipped, not failed, and the summary shows them 
 | CORS | Any origin by default | No cross-origin access by default; `*` only with profile `dev` | REST API and Security |
 | Health endpoint | None | `/actuator/health`, `/liveness`, `/readiness` public; other actuator endpoints need a token | Architecture |
 | Startup checks | None | Refuses to start with `JWT_SECRET` < 32 bytes or a non-BCrypt `ADMIN_PASSWORD` | REST API and Security |
+| ML request and result DTOs | No id | Each record and each prediction carries the alert `id` (not a feature); `GET /api/anomalies/ml-data` includes it | ML Service; REST API and Security |
+| Prediction over all alerts | One request with every alert | One request per batch of 5000 alerts, results concatenated in id order; values unchanged | ML Service; Architecture |
+| Agreement evaluation | Predictions matched by list position | Matched by alert id | ML Service; Testing |
+| New endpoint `POST /api/anomalies/score` | | Scores alerts without a stored score and saves the result | REST API and Security; ML Service |
+| New columns `anomaly_alerts.ml_score`, `ml_flag`, `ml_algorithm`, `ml_scored_at` | | `NULL` until scored | Data Model |
+| Alerts response | | Contains `mlScore`, `mlFlag`, `mlAlgorithm`, `mlScoredAt` only for scored alerts | REST API and Security |
+| ML model storage | `model_<algorithm>.joblib` and `.meta.json` in the working directory, loaded on every request | One bundle per algorithm in `MODEL_DIR` (absolute), loaded once and cached; metadata has feature schema and library versions | ML Service |
+| ML request size | Unlimited | 413 above `MAX_REQUEST_BYTES` (50 MiB) | ML Service |
+| ML stale model | Would predict anyway | 409 when the stored model's feature schema differs | ML Service |
+| ML dependencies | Unpinned, included matplotlib and requests | Pinned exact versions, Python 3.12 | ML Service; Testing |
 
 Unchanged: every existing endpoint path and request shape, the login response bodies (`{"token"}` and
 `{"message": "Invalid credentials"}`), the detection rules and thresholds, and the detect endpoint's
