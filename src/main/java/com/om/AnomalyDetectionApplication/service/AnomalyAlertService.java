@@ -1,12 +1,10 @@
 package com.om.AnomalyDetectionApplication.service;
 
 import com.om.AnomalyDetectionApplication.dto.AnomalySummaryResponse;
-import com.om.AnomalyDetectionApplication.dto.MLDataDTO;
 import com.om.AnomalyDetectionApplication.dto.TopSourceDTO;
 import com.om.AnomalyDetectionApplication.dto.TrendPointDTO;
 import com.om.AnomalyDetectionApplication.entity.AnomalyAlert;
 import com.om.AnomalyDetectionApplication.repository.AnomalyAlertRepository;
-import com.om.AnomalyDetectionApplication.util.MLFeatureMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -175,19 +173,5 @@ public class AnomalyAlertService {
         }
 
         return trend;
-    }
-    public List<MLDataDTO> getMLData() {
-        List<AnomalyAlert> alerts = anomalyAlertRepository.findAll();
-
-        return alerts.stream()
-                .filter(a -> a.getTimestamp() != null)
-                .map(a -> new MLDataDTO(
-                        a.getTimestamp().getHour(),
-                        a.getTimestamp().getDayOfWeek().getValue(),
-                        MLFeatureMapper.mapSeverity(a.getSeverity()),
-                        MLFeatureMapper.mapAnomalyType(a.getAnomalyType()),
-                        MLFeatureMapper.hashIpAddress(a.getSourceIp())
-                ))
-                .toList();
     }
 }

@@ -27,7 +27,7 @@ class MlServiceClientTest {
 
     private static final String BASE_URL = "http://ml.test";
     private static final MlPredictionRequest REQUEST =
-            new MlPredictionRequest(List.of(new MLDataDTO(10, 2, 3, 1, 42)));
+            new MlPredictionRequest(List.of(new MLDataDTO(7L, 10, 2, 3, 1, 42)));
 
     private RestTemplate restTemplate(String apiKey) {
         return new AppConfig().restTemplate(new RestTemplateBuilder(), 1000, 1000, apiKey);

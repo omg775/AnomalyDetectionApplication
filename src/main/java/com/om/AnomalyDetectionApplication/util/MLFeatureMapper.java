@@ -1,5 +1,8 @@
 package com.om.AnomalyDetectionApplication.util;
 
+import com.om.AnomalyDetectionApplication.dto.MLDataDTO;
+import com.om.AnomalyDetectionApplication.entity.AnomalyAlert;
+
 /**
  * Canonical label encoding for ML features, shared by every code path that
  * builds {@code MLDataDTO} records (training and prediction). The anomaly
@@ -9,6 +12,17 @@ package com.om.AnomalyDetectionApplication.util;
 public final class MLFeatureMapper {
 
     private MLFeatureMapper() {
+    }
+
+    /** Builds the ML feature vector of an alert, keeping its id for matching the prediction. */
+    public static MLDataDTO toFeatures(AnomalyAlert alert) {
+        return new MLDataDTO(
+                alert.getId(),
+                alert.getTimestamp().getHour(),
+                alert.getTimestamp().getDayOfWeek().getValue(),
+                mapSeverity(alert.getSeverity()),
+                mapAnomalyType(alert.getAnomalyType()),
+                hashIpAddress(alert.getSourceIp()));
     }
 
     public static int mapSeverity(String severity) {

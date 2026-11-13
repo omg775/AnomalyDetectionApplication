@@ -1,11 +1,9 @@
 package com.om.AnomalyDetectionApplication.service;
 
-import com.om.AnomalyDetectionApplication.dto.MLDataDTO;
 import com.om.AnomalyDetectionApplication.entity.AnomalyAlert;
 import com.om.AnomalyDetectionApplication.entity.TrafficRecord;
 import com.om.AnomalyDetectionApplication.repository.AnomalyAlertRepository;
 import com.om.AnomalyDetectionApplication.repository.TrafficRecordRepository;
-import com.om.AnomalyDetectionApplication.util.MLFeatureMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,7 +14,6 @@ import org.springframework.transaction.support.TransactionOperations;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 /**
  * Heuristic detection layer. Evaluates every traffic record exactly once: records are scanned in
@@ -126,30 +123,6 @@ public class DetectionService {
         alert.setSeverity(severity);
         alert.setTimestamp(record.getTimestamp());
         return Optional.of(alert);
-    }
-
-    public List<MLDataDTO> getMLData() {
-        List<AnomalyAlert> alerts = anomalyAlertRepository.findAll();
-
-        return alerts.stream()
-                .map(alert -> {
-                    int hourOfDay = alert.getTimestamp().getHour();
-                    int dayOfWeek = alert.getTimestamp().getDayOfWeek().getValue();
-
-                    int severity = MLFeatureMapper.mapSeverity(alert.getSeverity());
-                    int anomalyType = MLFeatureMapper.mapAnomalyType(alert.getAnomalyType());
-
-                    int sourceIpHash = MLFeatureMapper.hashIpAddress(alert.getSourceIp());
-
-                    return new MLDataDTO(
-                            hourOfDay,
-                            dayOfWeek,
-                            severity,
-                            anomalyType,
-                            sourceIpHash
-                    );
-                })
-                .collect(Collectors.toList());
     }
 
     /** Counts produced by one detection run (or one batch of it). */

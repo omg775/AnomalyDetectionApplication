@@ -90,6 +90,7 @@ def validate_contamination(contamination: Optional[float]) -> float:
 
 
 class MLDataDTO(BaseModel):
+    id: Optional[int] = None
     hourOfDay: int
     dayOfWeek: int
     severity: int
@@ -104,6 +105,7 @@ class MlPredictionRequest(BaseModel):
 
 
 class MlPredictionResult(BaseModel):
+    id: Optional[int] = None
     hourOfDay: int
     dayOfWeek: int
     severity: int
@@ -221,6 +223,7 @@ def predict(request: MlPredictionRequest):
     results = []
     for _, row in df.iterrows():
         results.append({
+            "id": None if pd.isna(row["id"]) else int(row["id"]),
             "hourOfDay": int(row["hourOfDay"]),
             "dayOfWeek": int(row["dayOfWeek"]),
             "severity": int(row["severity"]),
