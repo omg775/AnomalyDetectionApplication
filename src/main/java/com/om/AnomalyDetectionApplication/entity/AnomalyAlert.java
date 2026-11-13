@@ -8,7 +8,8 @@ import java.time.LocalDateTime;
 public class AnomalyAlert {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "anomaly_alerts_seq")
+    @SequenceGenerator(name = "anomaly_alerts_seq", sequenceName = "anomaly_alerts_seq", allocationSize = 50)
     private Long id;
 
     @Column(name = "source_ip", nullable = false)

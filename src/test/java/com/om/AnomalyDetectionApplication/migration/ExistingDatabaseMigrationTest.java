@@ -1,7 +1,11 @@
 package com.om.AnomalyDetectionApplication.migration;
 
+import com.om.AnomalyDetectionApplication.service.DetectionService;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -9,6 +13,8 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -19,12 +25,16 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @Testcontainers(disabledWithoutDocker = true)
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ExistingDatabaseMigrationTest {
 
     private static PostgreSQLContainer container;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private DetectionService detectionService;
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
@@ -54,6 +64,7 @@ class ExistingDatabaseMigrationTest {
     }
 
     @Test
+    @Order(1)
     void existingSchemaIsBaselinedAtVersionOne() {
         String baselineType = jdbcTemplate.queryForObject(
                 "SELECT type FROM flyway_schema_history WHERE version = '1'", String.class);
@@ -65,8 +76,39 @@ class ExistingDatabaseMigrationTest {
     }
 
     @Test
+    @Order(2)
     void existingDataIsPreserved() {
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM traffic_records", Integer.class)).isEqualTo(3);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM anomaly_alerts", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    @Order(3)
+    void recordsCoveredByTheOldWatermarkAreMarkedProcessed() {
+        List<Boolean> processed = jdbcTemplate.queryForList(
+                "SELECT processed FROM traffic_records ORDER BY id", Boolean.class);
+
+        assertThat(processed).containsExactly(true, false, false);
+    }
+
+    @Test
+    @Order(4)
+    void firstDetectionRunAfterUpgrade_alertsOnlyUnprocessedRecords_withoutIdCollisions() {
+        DetectionService.DetectionRunSummary summary = detectionService.detectAnomalies();
+
+        assertThat(summary.recordsScanned()).isEqualTo(2);
+        assertThat(summary.alertsCreated()).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForList("SELECT source_ip FROM anomaly_alerts ORDER BY id", String.class))
+                .containsExactly("1.1.1.1", "1.1.1.3");
+    }
+
+    @Test
+    @Order(5)
+    void rowsInsertedByHandStillGetAnId() {
+        jdbcTemplate.update("INSERT INTO anomaly_alerts (anomaly_type, severity, source_ip, timestamp) "
+                + "VALUES ('HIGH_TRAFFIC_VOLUME', 'LOW', '9.9.9.9', now())");
+
+        Integer distinctIds = jdbcTemplate.queryForObject("SELECT COUNT(DISTINCT id) FROM anomaly_alerts", Integer.class);
+        assertThat(distinctIds).isEqualTo(3);
     }
 }

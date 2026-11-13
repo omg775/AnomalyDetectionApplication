@@ -9,10 +9,40 @@ creates or changes tables. It only checks at startup that the entities match the
 | Folder | Used for |
 |---|---|
 | `src/main/resources/db/migration/common` | SQL that runs on every database (PostgreSQL and the H2 test database) |
+| `src/main/resources/db/migration/postgresql` | PostgreSQL-only SQL (production) |
+| `src/main/resources/db/migration/h2` | H2 equivalent of the PostgreSQL-only SQL (tests) |
 
 | Version | File | What it does |
 |---|---|---|
 | V1 | `common/V1__baseline_schema.sql` | The schema as Hibernate created it before Flyway: `traffic_records` and `anomaly_alerts` |
+| V2 | `common/V2__traffic_processed_marker.sql` | Adds `traffic_records.processed` (default `false`), marks rows the old timestamp watermark already covered as processed, adds indexes on `(processed, id)` and `anomaly_alerts(timestamp)` |
+| V2.1 | `postgresql/V2_1__id_sequences_for_batch_inserts.sql` | Replaces the identity columns with the sequences `anomaly_alerts_seq` and `traffic_records_seq` (increment 50) so Hibernate can batch inserts. Each sequence starts above the current maximum id |
+
+### What V2 means for existing data
+
+Before V2, detection only scanned traffic records newer than the latest alert. V2 marks every
+record with `timestamp <= MAX(anomaly_alerts.timestamp)` as processed, which is exactly the set the
+old logic would have skipped. The first run after the upgrade therefore behaves like the old one
+and creates no duplicate alerts.
+
+Records that were backfilled before the upgrade (older than the latest alert, never evaluated)
+stay marked as processed. To evaluate the whole history again from scratch, run this once and then
+call `POST /api/traffic/detect`:
+
+```sql
+BEGIN;
+DELETE FROM anomaly_alerts;
+UPDATE traffic_records SET processed = FALSE;
+COMMIT;
+```
+
+This deletes all alerts (and, after Phase 2, any stored ML scores), so only do it on purpose.
+
+### What V2.1 means for ids
+
+Ids are still assigned automatically, but Hibernate now reserves them in blocks of 50. Ids stay
+unique and increasing, but there can be gaps (for example after a restart). Rows inserted by hand
+without an id keep working because the column default uses the same sequence.
 
 ## How it behaves
 

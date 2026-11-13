@@ -60,7 +60,4 @@ public interface AnomalyAlertRepository extends JpaRepository<AnomalyAlert, Long
 
     // NEW: time-filtered trend base data
     List<AnomalyAlert> findByTimestampBetweenOrderByTimestampAsc(LocalDateTime start, LocalDateTime end);
-
-    @Query("SELECT MAX(a.timestamp) FROM AnomalyAlert a")
-    LocalDateTime findMaxTimestamp();
 }
