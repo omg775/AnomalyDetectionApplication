@@ -1,7 +1,10 @@
 package com.om.AnomalyDetectionApplication.dto;
 
+import org.springframework.http.HttpStatus;
+
 import java.time.LocalDateTime;
 
+/** JSON error body shared by every error the API returns. */
 public class ErrorResponse {
 
     private LocalDateTime timestamp;
@@ -14,6 +17,10 @@ public class ErrorResponse {
         this.status = status;
         this.error = error;
         this.message = message;
+    }
+
+    public static ErrorResponse of(HttpStatus status, String message) {
+        return new ErrorResponse(LocalDateTime.now(), status.value(), status.getReasonPhrase(), message);
     }
 
     public LocalDateTime getTimestamp() {

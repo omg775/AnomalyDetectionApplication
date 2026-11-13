@@ -23,13 +23,15 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtRequestFilter;
+    private final RestSecurityErrorHandler securityErrorHandler;
 
     @Value("${app.cors.allowed-origins:*}")
     private String allowedOrigins;
 
     @Autowired
-    public SecurityConfig(JwtAuthenticationFilter jwtRequestFilter) {
+    public SecurityConfig(JwtAuthenticationFilter jwtRequestFilter, RestSecurityErrorHandler securityErrorHandler) {
         this.jwtRequestFilter = jwtRequestFilter;
+        this.securityErrorHandler = securityErrorHandler;
     }
 
     @Bean
@@ -40,7 +42,10 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/login").permitAll()
                 .anyRequest().authenticated()
             )
-            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .exceptionHandling(exceptions -> exceptions
+                .authenticationEntryPoint(securityErrorHandler)
+                .accessDeniedHandler(securityErrorHandler));
 
         http.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
 

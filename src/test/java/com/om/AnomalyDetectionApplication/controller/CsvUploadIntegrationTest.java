@@ -75,12 +75,12 @@ class CsvUploadIntegrationTest {
     }
 
     @Test
-    void uploadCsv_withoutAuth_isRejected() throws Exception {
+    void uploadCsv_withoutAuth_returns401() throws Exception {
         String csv = "timestamp,source_ip,destination_ip,protocol,destination_port,bytes_transferred\n";
         MockMultipartFile file = new MockMultipartFile(
                 "file", "traffic.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
 
         mockMvc.perform(multipart("/api/traffic/upload").file(file))
-                .andExpect(status().is4xxClientError());
+                .andExpect(status().isUnauthorized());
     }
 }
