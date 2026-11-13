@@ -48,3 +48,10 @@ ADMIN_PASSWORD=$2a$10$change.me.to.a.real.bcrypt.hash.generated.above
 # Defaults to "*" (any origin) if unset — tighten this before deploying
 # publicly.
 CORS_ALLOWED_ORIGINS=*
+
+# --- ML service authentication ---
+# Shared secret the backend sends in the X-API-Key header. Set the SAME value as
+# ML_API_KEY for the FastAPI ML service, which refuses to start without it
+# (unless ALLOW_INSECURE_DEV=true for local development). Generate one with:
+#   openssl rand -hex 32
+ML_API_KEY=change-me-to-a-random-64-char-hex-string

@@ -1,14 +1,13 @@
 import json
+import logging
 import os
-import warnings
+import secrets
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Mapping, Optional
 
-from urllib3.exceptions import NotOpenSSLWarning
-
-warnings.filterwarnings("ignore", category=NotOpenSSLWarning)
-
-from fastapi import FastAPI, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 import pandas as pd
 import joblib
@@ -16,11 +15,43 @@ from sklearn.ensemble import IsolationForest
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.svm import OneClassSVM
 
-app = FastAPI()
+logger = logging.getLogger("ml-service")
 
+API_KEY_HEADER_NAME = "X-API-Key"
 DEFAULT_ALGORITHM = "isolation_forest"
 DEFAULT_CONTAMINATION = 0.01
 SUPPORTED_ALGORITHMS = ("isolation_forest", "local_outlier_factor", "one_class_svm")
+
+
+@dataclass(frozen=True)
+class Settings:
+    api_key: Optional[str]
+    allow_insecure_dev: bool
+
+
+def load_settings(env: Mapping[str, str] = os.environ) -> Settings:
+    """Reads the security settings and refuses an unauthenticated service unless explicitly allowed."""
+    api_key = env.get("ML_API_KEY", "").strip() or None
+    allow_insecure_dev = env.get("ALLOW_INSECURE_DEV", "false").strip().lower() == "true"
+    if api_key is None and not allow_insecure_dev:
+        raise RuntimeError(
+            "ML_API_KEY is not set. Set it to the same value as the backend's ML_API_KEY, "
+            "or set ALLOW_INSECURE_DEV=true for local development only."
+        )
+    if api_key is None:
+        logger.warning("ML_API_KEY is not set and ALLOW_INSECURE_DEV=true: /train and /predict are unauthenticated")
+    return Settings(api_key=api_key, allow_insecure_dev=allow_insecure_dev)
+
+
+api_key_header = APIKeyHeader(name=API_KEY_HEADER_NAME, auto_error=False)
+
+
+def require_api_key(request: Request, provided: Optional[str] = Depends(api_key_header)) -> None:
+    expected = request.app.state.settings.api_key
+    if expected is None:
+        return
+    if provided is None or not secrets.compare_digest(provided.encode(), expected.encode()):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 def model_path(algorithm: str) -> str:
@@ -108,17 +139,21 @@ def get_features(df: pd.DataFrame) -> pd.DataFrame:
     return df[features]
 
 
-@app.get("/")
+public_router = APIRouter()
+protected_router = APIRouter(dependencies=[Depends(require_api_key)])
+
+
+@public_router.get("/")
 def home():
     return {"message": "FastAPI ML service is running"}
 
 
-@app.get("/health")
+@public_router.get("/health")
 def health():
     return {"status": "UP"}
 
 
-@app.get("/models")
+@protected_router.get("/models")
 def list_models():
     models = []
     for algorithm in SUPPORTED_ALGORITHMS:
@@ -129,7 +164,7 @@ def list_models():
     return {"models": models}
 
 
-@app.post("/train")
+@protected_router.post("/train")
 def train(request: MlPredictionRequest):
     df = pd.DataFrame([record.model_dump() for record in request.records])
 
@@ -159,7 +194,7 @@ def train(request: MlPredictionRequest):
     return {"message": "Model trained and saved successfully", "records_processed": len(df)}
 
 
-@app.post("/predict", response_model=MlPredictionResponse)
+@protected_router.post("/predict", response_model=MlPredictionResponse)
 def predict(request: MlPredictionRequest):
     df = pd.DataFrame([record.model_dump() for record in request.records])
 
@@ -198,3 +233,15 @@ def predict(request: MlPredictionRequest):
         })
 
     return {"results": results}
+
+
+def create_app(settings: Optional[Settings] = None) -> FastAPI:
+    """Builds the FastAPI application. Raises RuntimeError when the security settings are unsafe."""
+    application = FastAPI(title="Anomaly Detection ML Service")
+    application.state.settings = settings if settings is not None else load_settings()
+    application.include_router(public_router)
+    application.include_router(protected_router)
+    return application
+
+
+app = create_app()

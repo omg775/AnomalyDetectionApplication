@@ -36,6 +36,8 @@ public class MlServiceClient {
             return restTemplate.postForObject(baseUrl + "/predict", request, MlPredictionResponse.class);
         } catch (HttpClientErrorException.BadRequest e) {
             throw new MlServiceException("Model not trained yet. Call /train first.", e);
+        } catch (HttpClientErrorException.Unauthorized e) {
+            throw rejectedApiKey(e);
         } catch (ResourceAccessException e) {
             throw new MlServiceException("ML service unreachable", e);
         } catch (RestClientException e) {
@@ -47,6 +49,8 @@ public class MlServiceClient {
         log.info("Calling ML service /train with {} records", request.getRecords().size());
         try {
             return restTemplate.postForObject(baseUrl + "/train", request, TrainModelResponse.class);
+        } catch (HttpClientErrorException.Unauthorized e) {
+            throw rejectedApiKey(e);
         } catch (ResourceAccessException e) {
             throw new MlServiceException("ML service unreachable", e);
         } catch (RestClientException e) {
@@ -62,5 +66,9 @@ public class MlServiceClient {
             log.warn("ML service health check failed: {}", e.getMessage());
             return false;
         }
+    }
+
+    private static MlServiceException rejectedApiKey(HttpClientErrorException e) {
+        return new MlServiceException("ML service rejected the API key. Check that ML_API_KEY is the same on both services.", e);
     }
 }
