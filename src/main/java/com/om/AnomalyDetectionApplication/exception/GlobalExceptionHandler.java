@@ -4,6 +4,7 @@ import com.om.AnomalyDetectionApplication.dto.ErrorResponse;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -27,6 +28,15 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleCsvImportException(CsvImportException e) {
         log.error("CSV import error: {}", e.getMessage());
         return build(HttpStatus.BAD_REQUEST, e.getMessage());
+    }
+
+    @ExceptionHandler(TooManyLoginAttemptsException.class)
+    public ResponseEntity<ErrorResponse> handleTooManyLoginAttempts(TooManyLoginAttemptsException e) {
+        long seconds = e.getRetryAfterSeconds();
+        HttpStatus status = HttpStatus.TOO_MANY_REQUESTS;
+        return ResponseEntity.status(status)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(seconds))
+                .body(ErrorResponse.of(status, "Too many failed login attempts. Try again in " + seconds + " seconds."));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
