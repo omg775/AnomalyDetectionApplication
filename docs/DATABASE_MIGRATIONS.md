@@ -19,6 +19,7 @@ creates or changes tables. It only checks at startup that the entities match the
 | V2.1 | `postgresql/V2_1__id_sequences_for_batch_inserts.sql` | Replaces the identity columns with the sequences `anomaly_alerts_seq` and `traffic_records_seq` (increment 50) so Hibernate can batch inserts. Each sequence starts above the current maximum id |
 | V3 | `common/V3__traffic_row_hash.sql` | Adds `traffic_records.row_hash` (SHA-256 of the row content) with a unique index, used by the CSV import to skip exact duplicates |
 | V3.1 | `postgresql/V3_1__backfill_traffic_row_hash.sql` | Computes `row_hash` for rows imported before V3. If existing rows are already exact duplicates of each other, only the lowest id gets the hash, the others keep `NULL` |
+| V4 | `common/V4__alert_ml_scores.sql` | Adds `anomaly_alerts.ml_score`, `ml_flag`, `ml_algorithm`, `ml_scored_at` (all `NULL` until `POST /api/anomalies/score` runs) and an index on `ml_scored_at` |
 
 ### What V2 means for existing data
 
@@ -38,7 +39,14 @@ UPDATE traffic_records SET processed = FALSE;
 COMMIT;
 ```
 
-This deletes all alerts (and, after Phase 2, any stored ML scores), so only do it on purpose.
+This deletes all alerts, including their stored ML scores, so only do it on purpose.
+
+To score all alerts again with a different algorithm, clear the stored scores and call
+`POST /api/anomalies/score?algorithm=...`:
+
+```sql
+UPDATE anomaly_alerts SET ml_score = NULL, ml_flag = NULL, ml_algorithm = NULL, ml_scored_at = NULL;
+```
 
 ### What V2.1 means for ids
 

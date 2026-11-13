@@ -64,4 +64,7 @@ public interface AnomalyAlertRepository extends JpaRepository<AnomalyAlert, Long
 
     /** Keyset paging: the next {@code limit} alerts after {@code id}, in id order. */
     List<AnomalyAlert> findByIdGreaterThanOrderByIdAsc(Long id, Limit limit);
+
+    /** Keyset paging over alerts the ML layer has not scored yet. */
+    List<AnomalyAlert> findByMlScoredAtIsNullAndIdGreaterThanOrderByIdAsc(Long id, Limit limit);
 }
