@@ -17,6 +17,8 @@ creates or changes tables. It only checks at startup that the entities match the
 | V1 | `common/V1__baseline_schema.sql` | The schema as Hibernate created it before Flyway: `traffic_records` and `anomaly_alerts` |
 | V2 | `common/V2__traffic_processed_marker.sql` | Adds `traffic_records.processed` (default `false`), marks rows the old timestamp watermark already covered as processed, adds indexes on `(processed, id)` and `anomaly_alerts(timestamp)` |
 | V2.1 | `postgresql/V2_1__id_sequences_for_batch_inserts.sql` | Replaces the identity columns with the sequences `anomaly_alerts_seq` and `traffic_records_seq` (increment 50) so Hibernate can batch inserts. Each sequence starts above the current maximum id |
+| V3 | `common/V3__traffic_row_hash.sql` | Adds `traffic_records.row_hash` (SHA-256 of the row content) with a unique index, used by the CSV import to skip exact duplicates |
+| V3.1 | `postgresql/V3_1__backfill_traffic_row_hash.sql` | Computes `row_hash` for rows imported before V3. If existing rows are already exact duplicates of each other, only the lowest id gets the hash, the others keep `NULL` |
 
 ### What V2 means for existing data
 

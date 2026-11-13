@@ -1,6 +1,9 @@
 package com.om.AnomalyDetectionApplication.migration;
 
+import com.om.AnomalyDetectionApplication.entity.TrafficRecord;
+import com.om.AnomalyDetectionApplication.repository.TrafficRecordRepository;
 import com.om.AnomalyDetectionApplication.service.DetectionService;
+import com.om.AnomalyDetectionApplication.util.TrafficRowHash;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
@@ -8,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -36,6 +40,9 @@ class ExistingDatabaseMigrationTest {
     @Autowired
     private DetectionService detectionService;
 
+    @Autowired
+    private TrafficRecordRepository trafficRecordRepository;
+
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
         container = PostgresTestDatabase.start();
@@ -50,7 +57,8 @@ class ExistingDatabaseMigrationTest {
                 "insert into traffic_records (bytes_transferred, destination_ip, destination_port, protocol, source_ip, timestamp) "
                         + "values (600000, '10.0.0.1', 80, 'TCP', '1.1.1.1', '2026-01-01 10:00:00'), "
                         + "(100, '10.0.0.1', 443, 'TCP', '1.1.1.2', '2026-01-01 11:00:00'), "
-                        + "(300000, '10.0.0.1', 80, 'TCP', '1.1.1.3', '2026-01-02 09:00:00')",
+                        + "(300000, '10.0.0.1', 80, 'TCP', '1.1.1.3', '2026-01-02 09:00:00'), "
+                        + "(100, '10.0.0.1', 443, 'TCP', '1.1.1.2', '2026-01-01 11:00:00')",
                 "insert into anomaly_alerts (anomaly_type, severity, source_ip, timestamp) "
                         + "values ('HIGH_TRAFFIC_VOLUME', 'HIGH', '1.1.1.1', '2026-01-01 10:00:00')");
         PostgresTestDatabase.register(registry, container);
@@ -78,7 +86,7 @@ class ExistingDatabaseMigrationTest {
     @Test
     @Order(2)
     void existingDataIsPreserved() {
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM traffic_records", Integer.class)).isEqualTo(3);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM traffic_records", Integer.class)).isEqualTo(4);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM anomaly_alerts", Integer.class)).isEqualTo(1);
     }
 
@@ -88,22 +96,32 @@ class ExistingDatabaseMigrationTest {
         List<Boolean> processed = jdbcTemplate.queryForList(
                 "SELECT processed FROM traffic_records ORDER BY id", Boolean.class);
 
-        assertThat(processed).containsExactly(true, false, false);
+        assertThat(processed).containsExactly(true, false, false, false);
     }
 
     @Test
     @Order(4)
+    void existingRowsGetTheSameHashAsTheApplicationComputes_exceptLaterDuplicates() {
+        List<TrafficRecord> records = trafficRecordRepository.findAll(Sort.by("id"));
+
+        assertThat(records.subList(0, 3))
+                .allSatisfy(r -> assertThat(r.getRowHash()).isEqualTo(TrafficRowHash.of(r)));
+        assertThat(records.get(3).getRowHash()).isNull();
+    }
+
+    @Test
+    @Order(5)
     void firstDetectionRunAfterUpgrade_alertsOnlyUnprocessedRecords_withoutIdCollisions() {
         DetectionService.DetectionRunSummary summary = detectionService.detectAnomalies();
 
-        assertThat(summary.recordsScanned()).isEqualTo(2);
+        assertThat(summary.recordsScanned()).isEqualTo(3);
         assertThat(summary.alertsCreated()).isEqualTo(1);
         assertThat(jdbcTemplate.queryForList("SELECT source_ip FROM anomaly_alerts ORDER BY id", String.class))
                 .containsExactly("1.1.1.1", "1.1.1.3");
     }
 
     @Test
-    @Order(5)
+    @Order(6)
     void rowsInsertedByHandStillGetAnId() {
         jdbcTemplate.update("INSERT INTO anomaly_alerts (anomaly_type, severity, source_ip, timestamp) "
                 + "VALUES ('HIGH_TRAFFIC_VOLUME', 'LOW', '9.9.9.9', now())");

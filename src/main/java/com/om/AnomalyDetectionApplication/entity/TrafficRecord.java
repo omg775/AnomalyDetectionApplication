@@ -33,6 +33,9 @@ public class TrafficRecord {
     @Column(nullable = false)
     private boolean processed;
 
+    @Column(name = "row_hash", length = 64, unique = true)
+    private String rowHash;
+
     public TrafficRecord() {
     }
 
@@ -94,5 +97,13 @@ public class TrafficRecord {
 
     public void setProcessed(boolean processed) {
         this.processed = processed;
+    }
+
+    public String getRowHash() {
+        return rowHash;
+    }
+
+    public void setRowHash(String rowHash) {
+        this.rowHash = rowHash;
     }
 }

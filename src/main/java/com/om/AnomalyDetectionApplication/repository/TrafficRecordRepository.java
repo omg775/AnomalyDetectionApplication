@@ -11,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 
 public interface TrafficRecordRepository extends JpaRepository<TrafficRecord, Long> {
 
@@ -26,4 +27,7 @@ public interface TrafficRecordRepository extends JpaRepository<TrafficRecord, Lo
     int markProcessed(@Param("ids") Collection<Long> ids);
 
     long countByProcessedFalse();
+
+    @Query("SELECT t.rowHash FROM TrafficRecord t WHERE t.rowHash IN :hashes")
+    Set<String> findExistingRowHashes(@Param("hashes") Collection<String> hashes);
 }
