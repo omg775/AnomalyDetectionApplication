@@ -129,7 +129,9 @@ def load_trained_model(store: ModelStore, name: str, algorithm: str, schema: Lis
 def train_and_store(store: ModelStore, name: str, algorithm: str, contamination: float,
                     features: pd.DataFrame, schema: List[str]) -> None:
     model = build_model(algorithm, contamination)
-    model.fit(features)
+    # Plain arrays: column order is fixed by the schema stored in the metadata, and LOF warns
+    # about feature names otherwise.
+    model.fit(features.to_numpy())
     store.save(name, model, {
         "name": name,
         "algorithm": algorithm,
@@ -220,10 +222,11 @@ def predict(request: MlPredictionRequest, store: ModelStore = Depends(model_stor
 
     frame = records_frame(request.records)
     features = alert_features(frame)
+    matrix = features.to_numpy()
     results = features.assign(
         id=frame["id"].astype(object).where(frame["id"].notna(), None),
-        prediction=model.predict(features).astype(int),
-        score=model.decision_function(features).astype(float),
+        prediction=model.predict(matrix).astype(int),
+        score=model.decision_function(matrix).astype(float),
     )
     return {"results": results.to_dict(orient="records")}
 

@@ -49,7 +49,10 @@ build/
 .vscode/
 
 ### ML service (generated artifacts) ###
-ml-service/*.joblib
+*.joblib
+ml-service/get-pip.py
+ml-service/results.csv
+ml-service/anomalies_only.csv
 ml-service/*.meta.json
 ml-service/__pycache__/
 ml-service/venv/
