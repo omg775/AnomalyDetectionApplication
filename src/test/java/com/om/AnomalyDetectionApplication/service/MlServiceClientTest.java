@@ -92,4 +92,28 @@ class MlServiceClientTest {
                 .isInstanceOf(MlServiceException.class)
                 .hasMessageContaining("rejected the API key");
     }
+
+    @Test
+    void staleModelSchema_becomesARetrainMessage() {
+        RestTemplate restTemplate = restTemplate("k");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        MlServiceClient client = new MlServiceClient(restTemplate, BASE_URL);
+        server.expect(requestTo(BASE_URL + "/predict")).andRespond(withStatus(HttpStatus.CONFLICT));
+
+        assertThatThrownBy(() -> client.getPredictions(REQUEST))
+                .isInstanceOf(MlServiceException.class)
+                .hasMessageContaining("Retrain it");
+    }
+
+    @Test
+    void tooLargeRequest_namesTheSettingsToChange() {
+        RestTemplate restTemplate = restTemplate("k");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        MlServiceClient client = new MlServiceClient(restTemplate, BASE_URL);
+        server.expect(requestTo(BASE_URL + "/train")).andRespond(withStatus(HttpStatus.CONTENT_TOO_LARGE));
+
+        assertThatThrownBy(() -> client.trainModel(REQUEST))
+                .isInstanceOf(MlServiceException.class)
+                .hasMessageContaining("MAX_REQUEST_BYTES");
+    }
 }

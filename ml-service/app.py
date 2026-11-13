@@ -1,19 +1,20 @@
-import json
 import logging
-import os
 import secrets
-from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import List, Mapping, Optional
+from typing import List, Optional
 
+import pandas as pd
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
-import pandas as pd
-import joblib
 from sklearn.ensemble import IsolationForest
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.svm import OneClassSVM
+
+from features import ALERT_FEATURES, alert_features
+from model_store import IncompatibleModelError, ModelStore, library_versions
+from settings import Settings, load_settings
 
 logger = logging.getLogger("ml-service")
 
@@ -21,26 +22,6 @@ API_KEY_HEADER_NAME = "X-API-Key"
 DEFAULT_ALGORITHM = "isolation_forest"
 DEFAULT_CONTAMINATION = 0.01
 SUPPORTED_ALGORITHMS = ("isolation_forest", "local_outlier_factor", "one_class_svm")
-
-
-@dataclass(frozen=True)
-class Settings:
-    api_key: Optional[str]
-    allow_insecure_dev: bool
-
-
-def load_settings(env: Mapping[str, str] = os.environ) -> Settings:
-    """Reads the security settings and refuses an unauthenticated service unless explicitly allowed."""
-    api_key = env.get("ML_API_KEY", "").strip() or None
-    allow_insecure_dev = env.get("ALLOW_INSECURE_DEV", "false").strip().lower() == "true"
-    if api_key is None and not allow_insecure_dev:
-        raise RuntimeError(
-            "ML_API_KEY is not set. Set it to the same value as the backend's ML_API_KEY, "
-            "or set ALLOW_INSECURE_DEV=true for local development only."
-        )
-    if api_key is None:
-        logger.warning("ML_API_KEY is not set and ALLOW_INSECURE_DEV=true: /train and /predict are unauthenticated")
-    return Settings(api_key=api_key, allow_insecure_dev=allow_insecure_dev)
 
 
 api_key_header = APIKeyHeader(name=API_KEY_HEADER_NAME, auto_error=False)
@@ -54,12 +35,45 @@ def require_api_key(request: Request, provided: Optional[str] = Depends(api_key_
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
-def model_path(algorithm: str) -> str:
-    return f"model_{algorithm}.joblib"
+def model_store(request: Request) -> ModelStore:
+    return request.app.state.model_store
 
 
-def metadata_path(algorithm: str) -> str:
-    return f"model_{algorithm}.meta.json"
+class RequestSizeLimitMiddleware:
+    """Rejects request bodies larger than max_bytes with 413, with or without a Content-Length header."""
+
+    def __init__(self, app, max_bytes: int):
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        declared = dict(scope["headers"]).get(b"content-length")
+        if declared is not None and declared.isdigit() and int(declared) > self.max_bytes:
+            await self._too_large()(scope, receive, send)
+            return
+
+        received = 0
+
+        async def limited_receive():
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_bytes:
+                    raise HTTPException(status_code=413, detail=self._message())
+            return message
+
+        await self.app(scope, limited_receive, send)
+
+    def _message(self) -> str:
+        return f"Request body exceeds the limit of {self.max_bytes} bytes (MAX_REQUEST_BYTES)"
+
+    def _too_large(self) -> JSONResponse:
+        return JSONResponse(status_code=413, content={"detail": self._message()})
 
 
 def build_model(algorithm: str, contamination: float):
@@ -72,7 +86,7 @@ def build_model(algorithm: str, contamination: float):
     raise ValueError(f"Unsupported algorithm: {algorithm}")
 
 
-def validate_algorithm(algorithm: str) -> str:
+def validate_algorithm(algorithm: Optional[str]) -> str:
     algorithm = (algorithm or DEFAULT_ALGORITHM).lower()
     if algorithm not in SUPPORTED_ALGORITHMS:
         raise HTTPException(
@@ -87,6 +101,44 @@ def validate_contamination(contamination: Optional[float]) -> float:
     if not (0.0 < value <= 0.5):
         raise HTTPException(status_code=400, detail="contamination must be in (0, 0.5]")
     return value
+
+
+def schema_conflict(algorithm: str) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail=f"The stored model for '{algorithm}' was trained with a different feature schema. Retrain it.",
+    )
+
+
+def load_trained_model(store: ModelStore, name: str, algorithm: str, schema: List[str]):
+    """Returns the cached model, or raises 400 when it was never trained and 409 when it does not fit the schema."""
+    try:
+        stored = store.get(name)
+    except IncompatibleModelError:
+        raise schema_conflict(algorithm) from None
+    if stored is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Model for algorithm '{algorithm}' not trained yet. Call /train first.",
+        )
+    if stored.metadata.get("featureSchema") != schema:
+        raise schema_conflict(algorithm)
+    return stored.model
+
+
+def train_and_store(store: ModelStore, name: str, algorithm: str, contamination: float,
+                    features: pd.DataFrame, schema: List[str]) -> None:
+    model = build_model(algorithm, contamination)
+    model.fit(features)
+    store.save(name, model, {
+        "name": name,
+        "algorithm": algorithm,
+        "contamination": contamination,
+        "recordsProcessed": len(features),
+        "trainedAt": datetime.now(timezone.utc).isoformat(),
+        "featureSchema": schema,
+        "libraryVersions": library_versions(),
+    })
 
 
 class MLDataDTO(BaseModel):
@@ -121,24 +173,8 @@ class MlPredictionResponse(BaseModel):
     results: List[MlPredictionResult]
 
 
-def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df["isNight"] = df["hourOfDay"].apply(lambda x: 1 if x < 6 else 0)
-    df["isWeekend"] = df["dayOfWeek"].apply(lambda x: 1 if x >= 6 else 0)
-    return df
-
-
-def get_features(df: pd.DataFrame) -> pd.DataFrame:
-    features = [
-        "hourOfDay",
-        "dayOfWeek",
-        "severity",
-        "anomalyType",
-        "sourceIpHash",
-        "isNight",
-        "isWeekend"
-    ]
-    return df[features]
+def records_frame(records: List[BaseModel]) -> pd.DataFrame:
+    return pd.DataFrame([record.model_dump() for record in records])
 
 
 public_router = APIRouter()
@@ -156,92 +192,49 @@ def health():
 
 
 @protected_router.get("/models")
-def list_models():
-    models = []
-    for algorithm in SUPPORTED_ALGORITHMS:
-        path = metadata_path(algorithm)
-        if os.path.exists(path):
-            with open(path) as f:
-                models.append(json.load(f))
-    return {"models": models}
+def list_models(store: ModelStore = Depends(model_store)):
+    return {"models": store.list_metadata()}
 
 
 @protected_router.post("/train")
-def train(request: MlPredictionRequest):
-    df = pd.DataFrame([record.model_dump() for record in request.records])
-
-    if df.empty:
+def train(request: MlPredictionRequest, store: ModelStore = Depends(model_store)):
+    if not request.records:
         return {"message": "No data provided for training"}
 
     algorithm = validate_algorithm(request.algorithm)
     contamination = validate_contamination(request.contamination)
 
-    df = preprocess_data(df)
-    X = get_features(df)
+    features = alert_features(records_frame(request.records))
+    train_and_store(store, algorithm, algorithm, contamination, features, ALERT_FEATURES)
 
-    model = build_model(algorithm, contamination)
-    model.fit(X)
-
-    joblib.dump(model, model_path(algorithm))
-
-    metadata = {
-        "algorithm": algorithm,
-        "contamination": contamination,
-        "recordsProcessed": len(df),
-        "trainedAt": datetime.now(timezone.utc).isoformat(),
-    }
-    with open(metadata_path(algorithm), "w") as f:
-        json.dump(metadata, f)
-
-    return {"message": "Model trained and saved successfully", "records_processed": len(df)}
+    return {"message": "Model trained and saved successfully", "records_processed": len(features)}
 
 
 @protected_router.post("/predict", response_model=MlPredictionResponse)
-def predict(request: MlPredictionRequest):
-    df = pd.DataFrame([record.model_dump() for record in request.records])
-
-    if df.empty:
+def predict(request: MlPredictionRequest, store: ModelStore = Depends(model_store)):
+    if not request.records:
         return {"results": []}
 
     algorithm = validate_algorithm(request.algorithm)
+    model = load_trained_model(store, algorithm, algorithm, ALERT_FEATURES)
 
-    df = preprocess_data(df)
-    X = get_features(df)
-
-    path = model_path(algorithm)
-    if not os.path.exists(path):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Model for algorithm '{algorithm}' not trained yet. Call /train first.",
-        )
-
-    model = joblib.load(path)
-
-    df["prediction"] = model.predict(X)
-    df["score"] = model.decision_function(X)
-
-    results = []
-    for _, row in df.iterrows():
-        results.append({
-            "id": None if pd.isna(row["id"]) else int(row["id"]),
-            "hourOfDay": int(row["hourOfDay"]),
-            "dayOfWeek": int(row["dayOfWeek"]),
-            "severity": int(row["severity"]),
-            "anomalyType": int(row["anomalyType"]),
-            "sourceIpHash": int(row["sourceIpHash"]),
-            "isNight": int(row["isNight"]),
-            "isWeekend": int(row["isWeekend"]),
-            "prediction": int(row["prediction"]),
-            "score": float(row["score"])
-        })
-
-    return {"results": results}
+    frame = records_frame(request.records)
+    features = alert_features(frame)
+    results = features.assign(
+        id=frame["id"].astype(object).where(frame["id"].notna(), None),
+        prediction=model.predict(features).astype(int),
+        score=model.decision_function(features).astype(float),
+    )
+    return {"results": results.to_dict(orient="records")}
 
 
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
-    """Builds the FastAPI application. Raises RuntimeError when the security settings are unsafe."""
+    """Builds the FastAPI application. Raises RuntimeError when the configuration is unsafe."""
+    settings = settings if settings is not None else load_settings()
     application = FastAPI(title="Anomaly Detection ML Service")
-    application.state.settings = settings if settings is not None else load_settings()
+    application.state.settings = settings
+    application.state.model_store = ModelStore(settings.model_dir)
+    application.add_middleware(RequestSizeLimitMiddleware, max_bytes=settings.max_request_bytes)
     application.include_router(public_router)
     application.include_router(protected_router)
     return application

@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from app import Settings, create_app, load_settings
+from app import create_app
+from settings import load_settings
 from tests.conftest import TEST_API_KEY
 
 SERVICE_DIR = Path(__file__).resolve().parent.parent
@@ -14,13 +15,8 @@ EMPTY_REQUEST = {"records": []}
 
 
 @pytest.fixture
-def client():
-    return TestClient(create_app(Settings(api_key=TEST_API_KEY, allow_insecure_dev=False)))
-
-
-@pytest.fixture
-def insecure_client():
-    return TestClient(create_app(Settings(api_key=None, allow_insecure_dev=True)))
+def insecure_client(make_settings):
+    return TestClient(create_app(make_settings(api_key=None, allow_insecure_dev=True)))
 
 
 def test_missing_key_without_dev_flag_is_refused():
@@ -46,6 +42,7 @@ def test_key_is_read_from_the_environment():
 
 def test_service_refuses_to_start_without_a_key():
     env = {k: v for k, v in os.environ.items() if k not in ("ML_API_KEY", "ALLOW_INSECURE_DEV")}
+    env["MODEL_DIR"] = os.environ["MODEL_DIR"]
 
     result = subprocess.run([sys.executable, "-c", "import app"], cwd=SERVICE_DIR, env=env,
                             capture_output=True, text=True)
