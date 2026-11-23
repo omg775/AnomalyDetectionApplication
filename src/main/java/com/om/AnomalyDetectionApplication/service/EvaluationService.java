@@ -3,17 +3,17 @@ package com.om.AnomalyDetectionApplication.service;
 import com.om.AnomalyDetectionApplication.dto.AgreementResponse;
 import com.om.AnomalyDetectionApplication.dto.MLDataDTO;
 import com.om.AnomalyDetectionApplication.dto.MlPredictionRequest;
-import com.om.AnomalyDetectionApplication.dto.MlPredictionResponse;
 import com.om.AnomalyDetectionApplication.dto.MlPredictionResultDTO;
 import com.om.AnomalyDetectionApplication.entity.AnomalyAlert;
 import com.om.AnomalyDetectionApplication.exception.MlServiceException;
-import com.om.AnomalyDetectionApplication.repository.AnomalyAlertRepository;
 import com.om.AnomalyDetectionApplication.util.MLFeatureMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Reports how often the heuristic layer's HIGH-severity verdict agrees with
@@ -25,69 +25,82 @@ public class EvaluationService {
 
     private static final Logger log = LoggerFactory.getLogger(EvaluationService.class);
 
-    private final AnomalyAlertRepository anomalyAlertRepository;
+    private final MlFeatureService mlFeatureService;
     private final MlServiceClient mlServiceClient;
 
-    public EvaluationService(AnomalyAlertRepository anomalyAlertRepository, MlServiceClient mlServiceClient) {
-        this.anomalyAlertRepository = anomalyAlertRepository;
+    public EvaluationService(MlFeatureService mlFeatureService, MlServiceClient mlServiceClient) {
+        this.mlFeatureService = mlFeatureService;
         this.mlServiceClient = mlServiceClient;
     }
 
+    /**
+     * Compares, alert by alert, the heuristic HIGH-severity verdict with the default model's
+     * anomaly flag. Alerts are scored batch by batch and predictions are matched by alert id.
+     *
+     * @return the agreement counts and rate
+     * @throws MlServiceException when the ML service does not return a prediction for every alert
+     */
     public AgreementResponse computeAgreement() {
-        List<AnomalyAlert> alerts = anomalyAlertRepository.findAll().stream()
-                .filter(a -> a.getTimestamp() != null)
-                .toList();
+        Tally tally = new Tally();
+        mlFeatureService.forEachAlertBatch(batch -> {
+            Map<Long, Boolean> mlFlags = predictBatch(batch);
+            for (AnomalyAlert alert : batch) {
+                tally.add("HIGH".equalsIgnoreCase(alert.getSeverity()), mlFlags.get(alert.getId()));
+            }
+        });
 
-        if (alerts.isEmpty()) {
+        int total = tally.total();
+        if (total == 0) {
             return new AgreementResponse(0, 0, 0, 0, 0, 0.0);
         }
+        double agreementRate = (double) (tally.both + tally.neither) / total;
 
-        List<MLDataDTO> records = alerts.stream()
-                .map(a -> new MLDataDTO(
-                        a.getTimestamp().getHour(),
-                        a.getTimestamp().getDayOfWeek().getValue(),
-                        MLFeatureMapper.mapSeverity(a.getSeverity()),
-                        MLFeatureMapper.mapAnomalyType(a.getAnomalyType()),
-                        MLFeatureMapper.hashIpAddress(a.getSourceIp())
-                ))
-                .toList();
+        log.info("Agreement evaluation: {} alerts compared, {} both, {} heuristic-only, {} ML-only, {} neither, {}% agreement",
+                total, tally.both, tally.heuristicOnly, tally.mlOnly, tally.neither,
+                Math.round(agreementRate * 10000.0) / 100.0);
 
-        MlPredictionRequest request = new MlPredictionRequest(records, null, null);
-        MlPredictionResponse response = mlServiceClient.getPredictions(request);
-        List<MlPredictionResultDTO> results = response.getResults();
+        return new AgreementResponse(total, tally.both, tally.heuristicOnly, tally.mlOnly, tally.neither, agreementRate);
+    }
 
-        if (results.size() != alerts.size()) {
-            throw new MlServiceException(
-                    "ML service returned a mismatched number of predictions (expected "
-                            + alerts.size() + ", got " + results.size() + ")", null);
+    /** Returns the ML anomaly flag per alert id for one batch. */
+    private Map<Long, Boolean> predictBatch(List<AnomalyAlert> batch) {
+        List<MLDataDTO> records = batch.stream().map(MLFeatureMapper::toFeatures).toList();
+        List<MlPredictionResultDTO> results = mlServiceClient
+                .getPredictions(new MlPredictionRequest(records, null, null))
+                .getResults();
+
+        Map<Long, Boolean> flags = results.stream()
+                .filter(result -> result.getId() != null)
+                .collect(Collectors.toMap(MlPredictionResultDTO::getId, result -> result.getPrediction() == -1,
+                        (first, second) -> first));
+        List<Long> missing = batch.stream().map(AnomalyAlert::getId).filter(id -> !flags.containsKey(id)).toList();
+        if (!missing.isEmpty()) {
+            throw new MlServiceException("ML service returned no prediction for " + missing.size()
+                    + " of " + batch.size() + " alerts", null);
         }
+        return flags;
+    }
 
-        int bothFlagged = 0;
-        int heuristicOnly = 0;
-        int mlOnly = 0;
-        int neitherFlagged = 0;
+    private static final class Tally {
+        private int both;
+        private int heuristicOnly;
+        private int mlOnly;
+        private int neither;
 
-        for (int i = 0; i < alerts.size(); i++) {
-            boolean heuristicHigh = "HIGH".equalsIgnoreCase(alerts.get(i).getSeverity());
-            boolean mlAnomaly = results.get(i).getPrediction() == -1;
-
-            if (heuristicHigh && mlAnomaly) {
-                bothFlagged++;
-            } else if (heuristicHigh) {
+        void add(boolean heuristic, boolean ml) {
+            if (heuristic && ml) {
+                both++;
+            } else if (heuristic) {
                 heuristicOnly++;
-            } else if (mlAnomaly) {
+            } else if (ml) {
                 mlOnly++;
             } else {
-                neitherFlagged++;
+                neither++;
             }
         }
 
-        int total = alerts.size();
-        double agreementRate = (double) (bothFlagged + neitherFlagged) / total;
-
-        log.info("Agreement evaluation: {} alerts compared, {} both, {} heuristic-only, {} ML-only, {} neither, {}% agreement",
-                total, bothFlagged, heuristicOnly, mlOnly, neitherFlagged, Math.round(agreementRate * 10000.0) / 100.0);
-
-        return new AgreementResponse(total, bothFlagged, heuristicOnly, mlOnly, neitherFlagged, agreementRate);
+        int total() {
+            return both + heuristicOnly + mlOnly + neither;
+        }
     }
 }

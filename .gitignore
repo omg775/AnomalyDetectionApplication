@@ -6,7 +6,7 @@ target/
 
 ### Secrets ###
 # application.properties itself is tracked and must only ever contain
-# ${VAR_NAME} placeholders — real values belong in environment variables.
+# ${VAR_NAME} placeholders; real values belong in environment variables.
 # (Profile-specific files like application-test.properties for test
 # fixtures are NOT ignored here since they typically hold no secrets;
 # double-check before committing one that it doesn't.)
@@ -49,8 +49,13 @@ build/
 .vscode/
 
 ### ML service (generated artifacts) ###
-ml-service/*.joblib
+*.joblib
+ml-service/get-pip.py
+ml-service/results.csv
+ml-service/anomalies_only.csv
 ml-service/*.meta.json
 ml-service/__pycache__/
 ml-service/venv/
 ml-service/.venv/
+ml-service/.pytest_cache/
+ml-service/models/

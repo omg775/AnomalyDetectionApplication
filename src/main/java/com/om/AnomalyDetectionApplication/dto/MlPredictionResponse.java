@@ -9,6 +9,10 @@ public class MlPredictionResponse {
     public MlPredictionResponse() {
     }
 
+    public MlPredictionResponse(List<MlPredictionResultDTO> results) {
+        this.results = results;
+    }
+
     public List<MlPredictionResultDTO> getResults() {
         return results;
     }

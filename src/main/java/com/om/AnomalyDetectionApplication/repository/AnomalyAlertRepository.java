@@ -1,6 +1,7 @@
 package com.om.AnomalyDetectionApplication.repository;
 
 import com.om.AnomalyDetectionApplication.entity.AnomalyAlert;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -61,6 +62,9 @@ public interface AnomalyAlertRepository extends JpaRepository<AnomalyAlert, Long
     // NEW: time-filtered trend base data
     List<AnomalyAlert> findByTimestampBetweenOrderByTimestampAsc(LocalDateTime start, LocalDateTime end);
 
-    @Query("SELECT MAX(a.timestamp) FROM AnomalyAlert a")
-    LocalDateTime findMaxTimestamp();
+    /** Keyset paging: the next {@code limit} alerts after {@code id}, in id order. */
+    List<AnomalyAlert> findByIdGreaterThanOrderByIdAsc(Long id, Limit limit);
+
+    /** Keyset paging over alerts the ML layer has not scored yet. */
+    List<AnomalyAlert> findByMlScoredAtIsNullAndIdGreaterThanOrderByIdAsc(Long id, Limit limit);
 }

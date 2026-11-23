@@ -8,7 +8,8 @@ import java.time.LocalDateTime;
 public class TrafficRecord {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "traffic_records_seq")
+    @SequenceGenerator(name = "traffic_records_seq", sequenceName = "traffic_records_seq", allocationSize = 50)
     private Long id;
 
     @Column(name = "timestamp", nullable = false)
@@ -28,6 +29,12 @@ public class TrafficRecord {
 
     @Column(name = "bytes_transferred", nullable = false)
     private Long bytesTransferred;
+
+    @Column(nullable = false)
+    private boolean processed;
+
+    @Column(name = "row_hash", length = 64, unique = true)
+    private String rowHash;
 
     public TrafficRecord() {
     }
@@ -82,5 +89,21 @@ public class TrafficRecord {
 
     public void setBytesTransferred(Long bytesTransferred) {
         this.bytesTransferred = bytesTransferred;
+    }
+
+    public boolean isProcessed() {
+        return processed;
+    }
+
+    public void setProcessed(boolean processed) {
+        this.processed = processed;
+    }
+
+    public String getRowHash() {
+        return rowHash;
+    }
+
+    public void setRowHash(String rowHash) {
+        this.rowHash = rowHash;
     }
 }

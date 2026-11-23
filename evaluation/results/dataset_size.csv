@@ -1,0 +1,3 @@
+set,benign,attack,total
+train,19010,990,20000
+test,50000,2632,52632

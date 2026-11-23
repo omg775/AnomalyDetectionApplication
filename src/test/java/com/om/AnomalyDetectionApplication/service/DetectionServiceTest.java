@@ -10,18 +10,18 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Limit;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -36,17 +36,22 @@ class DetectionServiceTest {
 
     private DetectionService detectionService;
 
+    private long nextId = 1;
+
     @BeforeEach
     void setUp() {
-        detectionService = new DetectionService(anomalyAlertRepository, trafficRecordRepository);
+        detectionService = new DetectionService(anomalyAlertRepository, trafficRecordRepository,
+                TransactionOperations.withoutTransaction());
         ReflectionTestUtils.setField(detectionService, "highTrafficVolumeBytes", 200000L);
         ReflectionTestUtils.setField(detectionService, "criticalTrafficVolumeBytes", 500000L);
         ReflectionTestUtils.setField(detectionService, "suspiciousPorts", List.of(21, 23, 3389));
+        ReflectionTestUtils.setField(detectionService, "batchSize", 1000);
     }
 
-    private TrafficRecord record(String sourceIp, Long bytesTransferred, Integer port) {
+    private TrafficRecord record(Long bytesTransferred, Integer port) {
         TrafficRecord record = new TrafficRecord();
-        record.setSourceIp(sourceIp);
+        ReflectionTestUtils.setField(record, "id", nextId++);
+        record.setSourceIp("1.2.3.4");
         record.setDestinationIp("10.0.0.1");
         record.setProtocol("TCP");
         record.setBytesTransferred(bytesTransferred);
@@ -55,90 +60,98 @@ class DetectionServiceTest {
         return record;
     }
 
-    private void stubTrafficPage(TrafficRecord... records) {
-        Page<TrafficRecord> page = new PageImpl<>(List.of(records));
-        when(trafficRecordRepository.findAll(any(Pageable.class))).thenReturn(page);
+    @SuppressWarnings("unchecked")
+    private List<AnomalyAlert> runAndCaptureSavedAlerts(TrafficRecord... records) {
+        when(trafficRecordRepository.findByProcessedFalseOrderByIdAsc(any(Limit.class))).thenReturn(List.of(records));
+
+        detectionService.detectAnomalies();
+
+        ArgumentCaptor<List<AnomalyAlert>> captor = ArgumentCaptor.forClass(List.class);
+        verify(anomalyAlertRepository).saveAll(captor.capture());
+        return captor.getValue();
     }
 
     @Test
     void bytesAboveCriticalThreshold_createsHighSeverityAlert() {
-        stubTrafficPage(record("1.2.3.4", 600000L, 80));
+        List<AnomalyAlert> saved = runAndCaptureSavedAlerts(record(600000L, 80));
 
-        detectionService.detectAnomalies();
-
-        ArgumentCaptor<AnomalyAlert> captor = ArgumentCaptor.forClass(AnomalyAlert.class);
-        verify(anomalyAlertRepository).save(captor.capture());
-        AnomalyAlert saved = captor.getValue();
-        assertThat(saved.getAnomalyType()).isEqualTo("HIGH_TRAFFIC_VOLUME");
-        assertThat(saved.getSeverity()).isEqualTo("HIGH");
+        assertThat(saved).singleElement().satisfies(alert -> {
+            assertThat(alert.getAnomalyType()).isEqualTo("HIGH_TRAFFIC_VOLUME");
+            assertThat(alert.getSeverity()).isEqualTo("HIGH");
+        });
     }
 
     @Test
     void bytesAboveHighButBelowCriticalThreshold_createsMediumSeverityAlert() {
-        stubTrafficPage(record("1.2.3.4", 300000L, 80));
+        List<AnomalyAlert> saved = runAndCaptureSavedAlerts(record(300000L, 80));
 
-        detectionService.detectAnomalies();
-
-        ArgumentCaptor<AnomalyAlert> captor = ArgumentCaptor.forClass(AnomalyAlert.class);
-        verify(anomalyAlertRepository).save(captor.capture());
-        AnomalyAlert saved = captor.getValue();
-        assertThat(saved.getAnomalyType()).isEqualTo("HIGH_TRAFFIC_VOLUME");
-        assertThat(saved.getSeverity()).isEqualTo("MEDIUM");
+        assertThat(saved).singleElement().satisfies(alert -> {
+            assertThat(alert.getAnomalyType()).isEqualTo("HIGH_TRAFFIC_VOLUME");
+            assertThat(alert.getSeverity()).isEqualTo("MEDIUM");
+        });
     }
 
     @Test
     void bytesExactlyAtHighThreshold_isNotAnAnomaly() {
-        stubTrafficPage(record("1.2.3.4", 200000L, 80));
-
-        detectionService.detectAnomalies();
-
-        verify(anomalyAlertRepository, never()).save(any());
+        assertThat(runAndCaptureSavedAlerts(record(200000L, 80))).isEmpty();
     }
 
     @Test
     void suspiciousPort_createsMediumSeverityAlert() {
-        stubTrafficPage(record("1.2.3.4", 1000L, 23));
+        List<AnomalyAlert> saved = runAndCaptureSavedAlerts(record(1000L, 23));
 
-        detectionService.detectAnomalies();
-
-        ArgumentCaptor<AnomalyAlert> captor = ArgumentCaptor.forClass(AnomalyAlert.class);
-        verify(anomalyAlertRepository).save(captor.capture());
-        AnomalyAlert saved = captor.getValue();
-        assertThat(saved.getAnomalyType()).isEqualTo("SUSPICIOUS_PORT_ACCESS");
-        assertThat(saved.getSeverity()).isEqualTo("MEDIUM");
+        assertThat(saved).singleElement().satisfies(alert -> {
+            assertThat(alert.getAnomalyType()).isEqualTo("SUSPICIOUS_PORT_ACCESS");
+            assertThat(alert.getSeverity()).isEqualTo("MEDIUM");
+        });
     }
 
     @Test
     void normalTraffic_noAlertCreated() {
-        stubTrafficPage(record("1.2.3.4", 1000L, 443));
-
-        detectionService.detectAnomalies();
-
-        verify(anomalyAlertRepository, never()).save(any());
+        assertThat(runAndCaptureSavedAlerts(record(1000L, 443))).isEmpty();
     }
 
     @Test
     void highTrafficVolumeTakesPrecedenceOverSuspiciousPort() {
-        stubTrafficPage(record("1.2.3.4", 600000L, 23));
+        List<AnomalyAlert> saved = runAndCaptureSavedAlerts(record(600000L, 23));
 
-        detectionService.detectAnomalies();
-
-        ArgumentCaptor<AnomalyAlert> captor = ArgumentCaptor.forClass(AnomalyAlert.class);
-        verify(anomalyAlertRepository).save(captor.capture());
-        assertThat(captor.getValue().getAnomalyType()).isEqualTo("HIGH_TRAFFIC_VOLUME");
+        assertThat(saved).singleElement()
+                .extracting(AnomalyAlert::getAnomalyType).isEqualTo("HIGH_TRAFFIC_VOLUME");
     }
 
     @Test
-    void incrementalRun_usesMaxTimestampWhenAlertsAlreadyExist() {
-        LocalDateTime maxTimestamp = LocalDateTime.of(2026, 1, 1, 0, 0);
-        when(anomalyAlertRepository.findMaxTimestamp()).thenReturn(maxTimestamp);
-        Page<TrafficRecord> page = new PageImpl<>(List.of());
-        when(trafficRecordRepository.findByTimestampGreaterThan(eq(maxTimestamp), any(Pageable.class)))
-                .thenReturn(page);
+    void everyScannedRecordIsMarkedProcessed_includingNormalOnes() {
+        TrafficRecord anomalous = record(600000L, 80);
+        TrafficRecord normal = record(1000L, 443);
 
-        detectionService.detectAnomalies();
+        runAndCaptureSavedAlerts(anomalous, normal);
 
-        verify(trafficRecordRepository).findByTimestampGreaterThan(eq(maxTimestamp), any(Pageable.class));
-        verify(trafficRecordRepository, never()).findAll(any(Pageable.class));
+        verify(trafficRecordRepository).markProcessed(List.of(anomalous.getId(), normal.getId()));
+    }
+
+    @Test
+    void fullBatch_triggersAnotherBatchUntilNothingIsLeft() {
+        ReflectionTestUtils.setField(detectionService, "batchSize", 2);
+        when(trafficRecordRepository.findByProcessedFalseOrderByIdAsc(any(Limit.class)))
+                .thenReturn(List.of(record(600000L, 80), record(1000L, 443)))
+                .thenReturn(List.of(record(1000L, 23)));
+
+        DetectionService.DetectionRunSummary summary = detectionService.detectAnomalies();
+
+        assertThat(summary.recordsScanned()).isEqualTo(3);
+        assertThat(summary.alertsCreated()).isEqualTo(2);
+        verify(anomalyAlertRepository, times(2)).saveAll(anyList());
+        verify(trafficRecordRepository, times(2)).markProcessed(anyList());
+    }
+
+    @Test
+    void nothingUnprocessed_writesNothing() {
+        when(trafficRecordRepository.findByProcessedFalseOrderByIdAsc(any(Limit.class))).thenReturn(List.of());
+
+        DetectionService.DetectionRunSummary summary = detectionService.detectAnomalies();
+
+        assertThat(summary.recordsScanned()).isZero();
+        verify(anomalyAlertRepository, never()).saveAll(anyList());
+        verify(trafficRecordRepository, never()).markProcessed(anyList());
     }
 }

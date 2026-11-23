@@ -2,12 +2,13 @@ package com.om.AnomalyDetectionApplication.controller;
 
 import com.om.AnomalyDetectionApplication.dto.MlPredictionResponse;
 import com.om.AnomalyDetectionApplication.dto.MlPredictionResultDTO;
+import com.om.AnomalyDetectionApplication.dto.ScoreResponse;
 import com.om.AnomalyDetectionApplication.dto.TrainModelResponse;
 import com.om.AnomalyDetectionApplication.service.PredictionService;
+import com.om.AnomalyDetectionApplication.service.ScoringService;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Pattern;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,10 +25,11 @@ public class PredictionController {
     private static final String ALGORITHM_PATTERN = "isolation_forest|local_outlier_factor|one_class_svm";
 
     private final PredictionService predictionService;
+    private final ScoringService scoringService;
 
-    @Autowired
-    public PredictionController(PredictionService predictionService) {
+    public PredictionController(PredictionService predictionService, ScoringService scoringService) {
         this.predictionService = predictionService;
+        this.scoringService = scoringService;
     }
 
     @GetMapping("/api/anomalies/predict")
@@ -43,6 +45,14 @@ public class PredictionController {
             @RequestParam(required = false) @DecimalMin(value = "0.0", inclusive = false) @DecimalMax("0.5") Double contamination
     ) {
         return predictionService.trainModel(algorithm, contamination);
+    }
+
+    /** Scores alerts that have no stored ML score yet and saves the results on the alerts. */
+    @PostMapping("/api/anomalies/score")
+    public ScoreResponse score(
+            @RequestParam(required = false) @Pattern(regexp = ALGORITHM_PATTERN) String algorithm
+    ) {
+        return scoringService.scoreUnscoredAlerts(algorithm);
     }
 
     @GetMapping("/anomalies-only")

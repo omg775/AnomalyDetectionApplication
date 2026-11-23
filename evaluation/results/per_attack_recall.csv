@@ -1,0 +1,56 @@
+configuration,attack,flows,recall
+Heuristic only (any alert),Bot,48,0.020833333333333332
+Heuristic only (any alert),DDoS,507,0.0
+Heuristic only (any alert),DoS GoldenEye,309,0.0
+Heuristic only (any alert),DoS Hulk,446,0.0
+Heuristic only (any alert),DoS Slowhttptest,162,0.0
+Heuristic only (any alert),DoS slowloris,174,0.0
+Heuristic only (any alert),FTP-Patator,247,1.0
+Heuristic only (any alert),PortScan,475,0.002105263157894737
+Heuristic only (any alert),SSH-Patator,190,0.0
+Heuristic only (any alert),Web Attack  Brute Force,47,0.0
+Heuristic only (any alert),Web Attack  XSS,27,0.07407407407407407
+Heuristic only (HIGH only),Bot,48,0.0
+Heuristic only (HIGH only),DDoS,507,0.0
+Heuristic only (HIGH only),DoS GoldenEye,309,0.0
+Heuristic only (HIGH only),DoS Hulk,446,0.0
+Heuristic only (HIGH only),DoS Slowhttptest,162,0.0
+Heuristic only (HIGH only),DoS slowloris,174,0.0
+Heuristic only (HIGH only),FTP-Patator,247,0.0
+Heuristic only (HIGH only),PortScan,475,0.0
+Heuristic only (HIGH only),SSH-Patator,190,0.0
+Heuristic only (HIGH only),Web Attack  Brute Force,47,0.0
+Heuristic only (HIGH only),Web Attack  XSS,27,0.0
+ML only (raw flow features),Bot,48,0.22916666666666666
+ML only (raw flow features),DDoS,507,0.16765285996055226
+ML only (raw flow features),DoS GoldenEye,309,0.2459546925566343
+ML only (raw flow features),DoS Hulk,446,0.006726457399103139
+ML only (raw flow features),DoS Slowhttptest,162,0.6049382716049383
+ML only (raw flow features),DoS slowloris,174,0.4942528735632184
+ML only (raw flow features),FTP-Patator,247,0.0
+ML only (raw flow features),PortScan,475,0.002105263157894737
+ML only (raw flow features),SSH-Patator,190,0.0
+ML only (raw flow features),Web Attack  Brute Force,47,0.0851063829787234
+ML only (raw flow features),Web Attack  XSS,27,0.07407407407407407
+Hybrid cascade (rules then ML),Bot,48,0.0
+Hybrid cascade (rules then ML),DDoS,507,0.0
+Hybrid cascade (rules then ML),DoS GoldenEye,309,0.0
+Hybrid cascade (rules then ML),DoS Hulk,446,0.0
+Hybrid cascade (rules then ML),DoS Slowhttptest,162,0.0
+Hybrid cascade (rules then ML),DoS slowloris,174,0.0
+Hybrid cascade (rules then ML),FTP-Patator,247,0.0
+Hybrid cascade (rules then ML),PortScan,475,0.0
+Hybrid cascade (rules then ML),SSH-Patator,190,0.0
+Hybrid cascade (rules then ML),Web Attack  Brute Force,47,0.0
+Hybrid cascade (rules then ML),Web Attack  XSS,27,0.07407407407407407
+Hybrid union (rules or ML),Bot,48,0.25
+Hybrid union (rules or ML),DDoS,507,0.16765285996055226
+Hybrid union (rules or ML),DoS GoldenEye,309,0.2459546925566343
+Hybrid union (rules or ML),DoS Hulk,446,0.006726457399103139
+Hybrid union (rules or ML),DoS Slowhttptest,162,0.6049382716049383
+Hybrid union (rules or ML),DoS slowloris,174,0.4942528735632184
+Hybrid union (rules or ML),FTP-Patator,247,1.0
+Hybrid union (rules or ML),PortScan,475,0.004210526315789474
+Hybrid union (rules or ML),SSH-Patator,190,0.0
+Hybrid union (rules or ML),Web Attack  Brute Force,47,0.0851063829787234
+Hybrid union (rules or ML),Web Attack  XSS,27,0.07407407407407407

@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
@@ -36,6 +37,12 @@ public class MlServiceClient {
             return restTemplate.postForObject(baseUrl + "/predict", request, MlPredictionResponse.class);
         } catch (HttpClientErrorException.BadRequest e) {
             throw new MlServiceException("Model not trained yet. Call /train first.", e);
+        } catch (HttpClientErrorException.Unauthorized e) {
+            throw rejectedApiKey(e);
+        } catch (HttpClientErrorException.Conflict e) {
+            throw new MlServiceException("The stored model does not match the current feature schema. Retrain it with /train.", e);
+        } catch (HttpClientErrorException e) {
+            throw clientError(e);
         } catch (ResourceAccessException e) {
             throw new MlServiceException("ML service unreachable", e);
         } catch (RestClientException e) {
@@ -47,6 +54,10 @@ public class MlServiceClient {
         log.info("Calling ML service /train with {} records", request.getRecords().size());
         try {
             return restTemplate.postForObject(baseUrl + "/train", request, TrainModelResponse.class);
+        } catch (HttpClientErrorException.Unauthorized e) {
+            throw rejectedApiKey(e);
+        } catch (HttpClientErrorException e) {
+            throw clientError(e);
         } catch (ResourceAccessException e) {
             throw new MlServiceException("ML service unreachable", e);
         } catch (RestClientException e) {
@@ -62,5 +73,17 @@ public class MlServiceClient {
             log.warn("ML service health check failed: {}", e.getMessage());
             return false;
         }
+    }
+
+    private static MlServiceException rejectedApiKey(HttpClientErrorException e) {
+        return new MlServiceException("ML service rejected the API key. Check that ML_API_KEY is the same on both services.", e);
+    }
+
+    private static MlServiceException clientError(HttpClientErrorException e) {
+        if (e.getStatusCode().isSameCodeAs(HttpStatus.CONTENT_TOO_LARGE)) {
+            return new MlServiceException("Request too large for the ML service. Raise MAX_REQUEST_BYTES there "
+                    + "or lower ml.feature.batch-size.", e);
+        }
+        return new MlServiceException("ML service error: " + e.getMessage(), e);
     }
 }

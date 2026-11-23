@@ -2,6 +2,8 @@ package com.om.AnomalyDetectionApplication.dto;
 
 public class MlPredictionResultDTO {
 
+    /** Id of the alert this prediction belongs to. */
+    private Long id;
     private int hourOfDay;
     private int dayOfWeek;
     private int severity;
@@ -12,6 +14,14 @@ public class MlPredictionResultDTO {
     private double score;
 
     public MlPredictionResultDTO() {
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
     }
 
     public int getHourOfDay() {

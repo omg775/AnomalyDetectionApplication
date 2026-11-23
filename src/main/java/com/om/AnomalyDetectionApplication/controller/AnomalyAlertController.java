@@ -6,6 +6,7 @@ import com.om.AnomalyDetectionApplication.dto.TopSourceDTO;
 import com.om.AnomalyDetectionApplication.dto.TrendPointDTO;
 import com.om.AnomalyDetectionApplication.entity.AnomalyAlert;
 import com.om.AnomalyDetectionApplication.service.AnomalyAlertService;
+import com.om.AnomalyDetectionApplication.service.MlFeatureService;
 import com.om.AnomalyDetectionApplication.service.MlServiceClient;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -28,10 +29,13 @@ public class AnomalyAlertController {
     private static final int MAX_PAGE_SIZE = 100;
 
     private final AnomalyAlertService anomalyAlertService;
+    private final MlFeatureService mlFeatureService;
     private final MlServiceClient mlServiceClient;
 
-    public AnomalyAlertController(AnomalyAlertService anomalyAlertService, MlServiceClient mlServiceClient) {
+    public AnomalyAlertController(AnomalyAlertService anomalyAlertService, MlFeatureService mlFeatureService,
+                                  MlServiceClient mlServiceClient) {
         this.anomalyAlertService = anomalyAlertService;
+        this.mlFeatureService = mlFeatureService;
         this.mlServiceClient = mlServiceClient;
     }
 
@@ -84,7 +88,7 @@ public class AnomalyAlertController {
 
     @GetMapping("/ml-data")
     public ResponseEntity<List<MLDataDTO>> getMLData() {
-        return ResponseEntity.ok(anomalyAlertService.getMLData());
+        return ResponseEntity.ok(mlFeatureService.loadAllFeatures());
     }
 
     @GetMapping("/ml-health")
