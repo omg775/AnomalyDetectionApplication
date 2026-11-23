@@ -94,7 +94,8 @@ docker run -d --name anomaly-db -p 5432:5432 \
   postgres:17-alpine
 ```
 
-The backend creates and updates the tables itself with Flyway on start. For an existing database
+If port 5432 is already in use, publish another one (for example `-p 5433:5432`) and use it in
+`DB_URL`. The backend creates and updates the tables itself with Flyway on start. For an existing database
 (for example Supabase, connected through the Session pooler) see
 `backend/docs/DATABASE_MIGRATIONS.md`.
 
@@ -120,13 +121,13 @@ cd backend
 ./mvnw spring-boot:run
 ```
 
-Ready when `curl http://localhost:8080/actuator/health` answers `{"status":"UP",...}`.
+Ready when `curl http://localhost:8080/actuator/health` answers with `"status":"UP"`.
 
 ### 4. Train once after every deployment
 
 A new ML service has no trained model, and models from older versions of the service are not
-loaded. Until a model is trained, prediction and scoring answer with status 503 ("Model not
-trained yet"). After the alerts exist (step 2 of the example below), train once:
+loaded. Once alerts exist, prediction and scoring answer with status 503 ("Model not trained
+yet") until a model is trained. After the alerts exist (step 2 of the example below), train once:
 
 ```bash
 curl -X POST -H "Authorization: Bearer $TOKEN" "http://localhost:8080/api/anomalies/train?algorithm=isolation_forest"
@@ -159,13 +160,20 @@ set the collection variables `adminUsername` and `adminPassword`, and run "Login
 
 ## Tests
 
-```bash
-# backend: 191 tests. The 7 PostgreSQL migration tests start a container and are skipped without Docker.
-cd backend && ./mvnw clean test
+Backend, 191 tests (the 7 PostgreSQL migration tests start a container and are skipped without
+Docker):
 
-# ML service: 47 tests
+```bash
+cd backend
+./mvnw clean test
+```
+
+ML service, 47 tests:
+
+```bash
 cd ml-service
-python3.12 -m venv .venv && source .venv/bin/activate
+python3.12 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements-dev.txt
 pytest
 ```
