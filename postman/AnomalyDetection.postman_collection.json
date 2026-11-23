@@ -1,0 +1,473 @@
+{
+  "info": {
+    "_postman_id": "d70a45dc-c7e5-5a76-8088-9bdb79a7e2df",
+    "name": "Anomaly Detection API",
+    "description": "Main endpoints of the backend (thesis Table 9) plus the analytics and health endpoints.\n\n1. Set the collection variables adminUsername and adminPassword (Current value only, never commit them).\n2. Run 'Login'. Its test script stores the JWT in the collection variable 'token'.\n3. All other requests send it as Bearer token.\n\nThe file contains no credentials or tokens.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "adminUsername",
+      "value": ""
+    },
+    {
+      "key": "adminPassword",
+      "value": ""
+    },
+    {
+      "key": "token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Obtain a JWT. Stores it in the collection variable 'token'.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    pm.collectionVariables.set('token', pm.response.json().token);",
+                  "}",
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Traffic",
+      "item": [
+        {
+          "name": "Upload CSV",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/traffic/upload",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "traffic",
+                "upload"
+              ]
+            },
+            "description": "Import a CSV file. Select sample_data/sample_traffic.csv as the file.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Run detection",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/traffic/detect",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "traffic",
+                "detect"
+              ]
+            },
+            "description": "Run the heuristic detection on all unprocessed traffic records."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Alerts",
+      "item": [
+        {
+          "name": "Alerts (paging and filters)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/anomalies?page=0&size=10&severity=&anomalyType=&start=&end=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "anomalies"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0",
+                  "description": "page number"
+                },
+                {
+                  "key": "size",
+                  "value": "10",
+                  "description": "page size, max 100"
+                },
+                {
+                  "key": "severity",
+                  "value": "",
+                  "description": "LOW, MEDIUM or HIGH",
+                  "disabled": true
+                },
+                {
+                  "key": "anomalyType",
+                  "value": "",
+                  "description": "HIGH_TRAFFIC_VOLUME or SUSPICIOUS_PORT_ACCESS",
+                  "disabled": true
+                },
+                {
+                  "key": "start",
+                  "value": "",
+                  "description": "ISO date-time, needs end",
+                  "disabled": true
+                },
+                {
+                  "key": "end",
+                  "value": "",
+                  "description": "ISO date-time, needs start",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Alerts with paging and filters."
+          }
+        },
+        {
+          "name": "Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/anomalies/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "anomalies",
+                "summary"
+              ]
+            },
+            "description": "Alert counts by severity and type."
+          }
+        },
+        {
+          "name": "Top sources",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/anomalies/top-sources",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "anomalies",
+                "top-sources"
+              ]
+            },
+            "description": "Source addresses with the most alerts."
+          }
+        },
+        {
+          "name": "Trend",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/anomalies/trend",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "anomalies",
+                "trend"
+              ]
+            },
+            "description": "Alerts per hour."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Machine learning",
+      "item": [
+        {
+          "name": "Train model",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/anomalies/train?algorithm=isolation_forest&contamination=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "anomalies",
+                "train"
+              ],
+              "query": [
+                {
+                  "key": "algorithm",
+                  "value": "isolation_forest",
+                  "description": "isolation_forest, local_outlier_factor or one_class_svm"
+                },
+                {
+                  "key": "contamination",
+                  "value": "",
+                  "description": "between 0 and 0.5, default 0.01",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Train a model on all alerts."
+          }
+        },
+        {
+          "name": "Predict",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/anomalies/predict?algorithm=isolation_forest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "anomalies",
+                "predict"
+              ],
+              "query": [
+                {
+                  "key": "algorithm",
+                  "value": "isolation_forest",
+                  "description": "isolation_forest, local_outlier_factor or one_class_svm"
+                }
+              ]
+            },
+            "description": "Score all alerts with the trained model."
+          }
+        },
+        {
+          "name": "Score and store",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/anomalies/score?algorithm=isolation_forest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "anomalies",
+                "score"
+              ],
+              "query": [
+                {
+                  "key": "algorithm",
+                  "value": "isolation_forest",
+                  "description": "isolation_forest, local_outlier_factor or one_class_svm"
+                }
+              ]
+            },
+            "description": "Store the model results with every alert that has none yet."
+          }
+        },
+        {
+          "name": "ML service health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/anomalies/ml-health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "anomalies",
+                "ml-health"
+              ]
+            },
+            "description": "State of the ML service (UP or DOWN)."
+          }
+        },
+        {
+          "name": "ML features",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/anomalies/ml-data",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "anomalies",
+                "ml-data"
+              ]
+            },
+            "description": "Feature vectors sent to the ML service."
+          }
+        },
+        {
+          "name": "Anomalies only",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/anomalies-only",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "anomalies-only"
+              ]
+            },
+            "description": "Predictions flagged as anomalies (default model)."
+          }
+        },
+        {
+          "name": "Prediction statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stats"
+              ]
+            },
+            "description": "Share of alerts flagged by the default model."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Evaluation",
+      "item": [
+        {
+          "name": "Agreement of rules and ML",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/evaluation/agreement",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "evaluation",
+                "agreement"
+              ]
+            },
+            "description": "Compares the HIGH verdicts of the rules with the model flags."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Backend health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": "Public health endpoint.",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
